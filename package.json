@@ -1,10 +1,5 @@
-﻿{
+{
   "name": "notify-dashboard",
   "private": true,
-  "version": "1.0.0",
-  "description": "Multi-project notification metrics dashboard on Vercel",
-  "scripts": {
-    "dev": "npx serve public",
-    "vercel": "npx vercel"
-  }
+  "version": "1.0.0"
 }
