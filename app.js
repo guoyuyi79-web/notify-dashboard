@@ -100,7 +100,8 @@ function pickOverviewRow(rows, g) {
   const clickUsers = out["点击用户数"] || 0;
   const clickCount = out["点击事件数"] || 0;
   out["授权率"] = base ? auth / base : 0;
-  out["通知渗透率"] = auth ? showUsers / auth : 0;
+  // 与脚本一致：DayN 发送通知用户 / Day0 first_open（总活跃）
+  out["通知渗透率"] = base ? showUsers / base : 0;
   out["人均通知数"] = auth ? showCount / auth : 0;
   out["点击率-用户"] = showUsers ? clickUsers / showUsers : 0;
   out["点击率-事件"] = showCount ? clickCount / showCount : 0;
@@ -180,9 +181,13 @@ function renderRates() {
     return;
   }
   const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
+  // 渗透率统一：DayN 发送通知用户 / Day0 first_open（总活跃），不读表内旧口径
+  const base = Number(row["总活跃用户"]) || 0;
+  const showUsers = Number(row["发送通知用户数"]) || 0;
+  const penetration = base ? showUsers / base : 0;
   const rates = [
     ["授权率", pct(row["授权率"])],
-    ["通知渗透率", pct(row["通知渗透率"])],
+    ["通知渗透率", pct(penetration)],
     ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
     ["点击率-用户", pct(row["点击率-用户"])],
     ["点击率-事件", pct(row["点击率-事件"])],
