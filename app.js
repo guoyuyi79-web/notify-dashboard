@@ -97,14 +97,15 @@ function formatMsSummary(id) {
   const set = multiState[id] || new Set([ALL]);
   const vals = [...set];
   if (!vals.length || vals.some(isAllToken)) return "全部";
-  if (vals.length === 1) return vals[0];
-  if (vals.length === 2) return vals.join("、");
-  return `${vals[0]}、${vals[1]} 等${vals.length}项`;
+  return vals.join("、");
 }
 
 function updateMsToggleLabel(id) {
   const btn = $(msToggleId(id));
-  if (btn) btn.textContent = formatMsSummary(id);
+  if (!btn) return;
+  const text = formatMsSummary(id);
+  btn.textContent = text;
+  btn.title = text;
 }
 
 function closeAllMsPanels(exceptId) {
@@ -235,8 +236,7 @@ function bindMultiSelectUI() {
 
 function formatMultiLabel(arr) {
   if (!arr || !arr.length || arr.some(isAllToken) || arr.includes("全部")) return "全部";
-  if (arr.length <= 2) return arr.join("、");
-  return `${arr.slice(0, 2).join("、")} 等${arr.length}项`;
+  return arr.join("、");
 }
 
 function compareByValue() {
@@ -414,13 +414,16 @@ function pickOverviewRow(rows, g) {
 }
 
 function dimContextHtml(gDisp) {
+  const mode = compareByValue();
   const parts = [
     `国家 ${gDisp.country || "全部"}`,
-    `品牌 ${gDisp.brand || "全部"}`,
-    `版本 ${gDisp.version || "全部"}`,
-    `时间周期 ${gDisp.period || "—"}`
+    `品牌 ${gDisp.brand || "全部"}`
   ];
-  if (gDisp.project && gDisp.project !== "全部") parts.unshift(`项目 ${gDisp.project}`);
+  if (mode !== "version") parts.push(`版本 ${gDisp.version || "全部"}`);
+  if (mode !== "period") parts.push(`时间周期 ${gDisp.period || "—"}`);
+  if (gDisp.project && gDisp.project !== "全部" && mode !== "project") {
+    parts.unshift(`项目 ${gDisp.project}`);
+  }
   return `当前维度：${parts.join(" · ")}`;
 }
 
@@ -430,13 +433,21 @@ function setDimContext(id, gDisp) {
 }
 
 function seriesDimLine(col) {
+  const mode = compareByValue();
+  const gDisp = globalFiltersDisplay();
   const r = col.row || {};
-  const g = col.g || {};
-  const country = r["国家"] || formatMultiLabel(g.countries) || "全部";
-  const brand = r["设备品牌"] || formatMultiLabel(g.brands) || "全部";
-  const version = r["版本"] || formatMultiLabel(g.versions) || "全部";
-  const period = r["日期"] || (g.periods && g.periods[0]) || "—";
-  return `国家 ${country} · 品牌 ${brand} · 版本 ${version} · 时间周期 ${period}`;
+  const parts = [
+    `国家 ${gDisp.country || "全部"}`,
+    `品牌 ${gDisp.brand || "全部"}`
+  ];
+  // 对比维度已在行首标签展示，这里不再重复
+  if (mode !== "version") {
+    parts.push(`版本 ${gDisp.version !== "全部" ? gDisp.version : (r["版本"] || "全部")}`);
+  }
+  if (mode !== "period") {
+    parts.push(`时间周期 ${r["日期"] || gDisp.period || "—"}`);
+  }
+  return parts.join(" · ");
 }
 
 function seriesLabels(mode) {
@@ -742,12 +753,27 @@ function renderScenarioCompareDetail(matrix) {
   return `<div class="table-wrap"><table class="compare-table scenario-detail-compare"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+/** 维度列：对比维度本身已在右侧分列，中间不再重复展示 */
+function dimHeadersHtml() {
+  const mode = compareByValue();
+  const parts = [];
+  parts.push("<th>国家</th>");
+  parts.push("<th>品牌</th>");
+  if (mode !== "version") parts.push("<th>版本</th>");
+  if (mode !== "period") parts.push("<th>时间周期</th>");
+  return parts.join("");
+}
+
 function dimCellsHtml(row, gShow) {
+  const mode = compareByValue();
   const country = (row && row["国家"]) || gShow.country || "全部";
   const brand = (row && (row["设备品牌"] || "全部")) || gShow.brand || "全部";
   const version = (row && (row["版本"] || "全部")) || gShow.version || "全部";
   const period = (row && row["日期"]) || gShow.period || "—";
-  return `<td>${country}</td><td>${brand}</td><td>${version}</td><td>${period}</td>`;
+  const parts = [`<td>${country}</td>`, `<td>${brand}</td>`];
+  if (mode !== "version") parts.push(`<td>${version}</td>`);
+  if (mode !== "period") parts.push(`<td>${period}</td>`);
+  return parts.join("");
 }
 
 function renderKpi() {
@@ -762,50 +788,64 @@ function renderKpi() {
     return;
   }
 
-  const baseline = baselineValue();
+  let baseline = baselineValue();
   cols = orderSeries(cols.map((c) => c.key)).map((k) => cols.find((c) => c.key === k)).filter(Boolean);
 
   const metricSets = cols.map((c) =>
     kpiMetricsFromOverview(c.row, retentionMetricsForSeries(c, "overview"))
       .filter((m) => !/^Day0留存$/i.test(m.key))
   );
-  const baseIdx = baseline !== NONE
-    ? cols.findIndex((c) => c.key === baseline)
-    : -1;
+
+  // 多列且未选基准时，默认用首列作基准，才能出「对比」列
+  if (cols.length >= 2 && baseline === NONE) {
+    baseline = cols[0].key;
+  }
+  const baseIdx = cols.findIndex((c) => c.key === baseline);
   const baseMetrics = baseIdx >= 0 ? metricSets[baseIdx] : null;
+  const compareCols = cols.filter((c) => c.key !== baseline);
+  const dimHead = dimHeadersHtml();
+  const dimSample = cols[0].row;
 
   if (cols.length === 1) {
-    const row = cols[0].row;
     $("stats").innerHTML = `
       <div class="table-wrap"><table class="compare-table">
-        <thead><tr><th>指标</th><th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th><th class="num">${cols[0].key}</th></tr></thead>
+        <thead><tr><th>指标</th>${dimHead}<th class="num">${cols[0].key}</th></tr></thead>
         <tbody>${metricSets[0].map((m) =>
-          `<tr><td>${m.key}</td>${dimCellsHtml(row, gShow)}<td class="num">${formatKpiValue(m)}</td></tr>`
+          `<tr><td>${m.key}</td>${dimCellsHtml(dimSample, gShow)}<td class="num">${formatKpiValue(m)}</td></tr>`
         ).join("")}</tbody>
       </table></div>`;
     renderRateAvgBars(cols, metricSets);
     return;
   }
 
-  const head = `<tr><th>指标</th><th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th>${cols.map((c) => {
-    const tag = c.key === baseline ? "（基准）" : "";
-    return `<th class="num">${c.key}${tag}</th>`;
-  }).join("")}</tr>`;
+  const headParts = [`<th>指标</th>${dimHead}`];
+  if (baseIdx >= 0) {
+    headParts.push(`<th class="num">${cols[baseIdx].key}（基准）</th>`);
+  }
+  compareCols.forEach((c) => {
+    headParts.push(`<th class="num">${c.key}</th>`);
+    headParts.push(`<th class="num">对比</th>`);
+  });
 
   const body = metricSets[0].map((m0, i) => {
-    const cells = cols.map((c, ci) => {
+    const cells = [];
+    if (baseIdx >= 0) {
+      cells.push(`<td class="num">${formatKpiValue(metricSets[baseIdx][i])}</td>`);
+    }
+    compareCols.forEach((c) => {
+      const ci = cols.findIndex((x) => x.key === c.key);
       const m = metricSets[ci][i];
-      const main = formatKpiValue(m);
-      if (!baseMetrics || c.key === baseline) {
-        return `<td class="num">${main}</td>`;
+      cells.push(`<td class="num">${formatKpiValue(m)}</td>`);
+      if (baseMetrics) {
+        cells.push(`<td class="num">${formatDelta(m, baseMetrics[i])}</td>`);
+      } else {
+        cells.push(`<td class="num muted">—</td>`);
       }
-      const delta = formatDelta(m, baseMetrics[i]);
-      return `<td class="num">${main}<div class="delta-line">${delta}</div></td>`;
-    }).join("");
-    return `<tr><td>${m0.key}</td>${dimCellsHtml(cols[0].row, gShow)}${cells}</tr>`;
+    });
+    return `<tr><td>${m0.key}</td>${dimCellsHtml(dimSample, gShow)}${cells.join("")}</tr>`;
   }).join("");
 
-  $("stats").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  $("stats").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
   renderRateAvgBars(cols, metricSets);
 }
 
