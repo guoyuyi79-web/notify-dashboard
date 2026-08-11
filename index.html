@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>通知运营看板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div>
+        <h1>通知运营看板</h1>
+        <p class="sub">全局筛选控制项目/国家等；各模块标题旁可再筛队列天、查看类型，只影响对应图表。</p>
+      </div>
+      <div id="statusPill" class="pill">未加载</div>
+    </header>
+
+    <section class="panel">
+      <h2>1. 粘贴多个项目的 Google Sheet 链接</h2>
+      <textarea id="sheetUrls" rows="5" placeholder="每行一个链接"></textarea>
+      <div class="url-row actions">
+        <button id="btnLoad" type="button">加载并清洗全部</button>
+      </div>
+      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。</p>
+      <div id="sourceList" class="source-list muted"></div>
+    </section>
+
+    <section class="panel">
+      <h2>2. 全局筛选</h2>
+      <div class="filters">
+        <label>项目代号<select id="project"></select></label>
+        <label>国家<select id="country"></select></label>
+        <label>设备品牌<select id="brand"></select></label>
+        <label>日期区间<select id="period"></select></label>
+      </div>
+    </section>
+
+    <div class="panel-head-row">
+      <h2 class="inline-h2">总览 KPI</h2>
+      <label class="mod-filter">队列天数
+        <select id="cohortDayOverview"></select>
+      </label>
+    </div>
+    <section class="stats" id="stats"></section>
+
+    <section class="grid2">
+      <div class="panel">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">场景点击率（用户）</h2>
+          <div class="mod-filters">
+            <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
+            <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
+          </div>
+        </div>
+        <div id="scenarioBars" class="bars"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">总览效率</h2>
+          <label class="mod-filter">队列天数
+            <select id="cohortDayRates"></select>
+          </label>
+        </div>
+        <div id="rateTable"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head-row">
+        <h2 class="inline-h2">场景明细（绝对数）</h2>
+        <div class="mod-filters">
+          <label class="mod-filter">队列天数<select id="cohortDayScenarioTable"></select></label>
+          <label class="mod-filter">查看类型<select id="viewTypeScenarioTable"></select></label>
+        </div>
+      </div>
+      <div id="scenarioTable" class="table-wrap"></div>
+    </section>
+  </div>
+  <div id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
