@@ -157,11 +157,22 @@ function rateRowsFromOverview(row) {
 }
 
 function kpiRowsFromOverview(row) {
+  const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
+  const base = Number(row["总活跃用户"]) || 0;
+  const showUsers = Number(row["发送通知用户数"]) || 0;
+  const penetration = base ? showUsers / base : 0;
   return [
     ["总活跃用户", num(row["总活跃用户"])],
     ["授权数", num(row["授权数"])],
     ["发送通知用户", num(row["发送通知用户数"])],
-    ["点击用户", num(row["点击用户数"])]
+    ["点击用户", num(row["点击用户数"])],
+    ["授权率", pct(row["授权率"])],
+    ["通知渗透率", pct(penetration)],
+    ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
+    ["点击率-用户", pct(row["点击率-用户"])],
+    ["点击率-事件", pct(row["点击率-事件"])],
+    ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
+    [uninstallKey, pct(row[uninstallKey])]
   ];
 }
 
