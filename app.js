@@ -41,26 +41,14 @@ function parseUrlsFromTextarea() {
     .map((s) => s.trim())
     .filter(Boolean);
 }
-function filters() {
+
+function globalFilters() {
   return {
     project: $("project").value || "全部",
     country: $("country").value || "全部",
     brand: $("brand").value || "全部",
-    period: $("period").value || "",
-    cohortDay: $("cohortDay").value || "全部",
-    viewType: $("viewType").value || "全部"
+    period: $("period").value || ""
   };
-}
-function filterLabel(f) {
-  const parts = [
-    f.project !== "全部" ? f.project : null,
-    f.country !== "全部" ? f.country : null,
-    f.brand !== "全部" ? f.brand : null,
-    f.period || null,
-    f.cohortDay !== "全部" ? f.cohortDay : null,
-    f.viewType !== "全部" ? f.viewType : null
-  ].filter(Boolean);
-  return parts.length ? parts.join(" · ") : "全部条件";
 }
 function matchDim(rowVal, selected, emptyAsAll) {
   if (!selected || selected === "全部") return true;
@@ -69,40 +57,25 @@ function matchDim(rowVal, selected, emptyAsAll) {
     : String(rowVal).trim();
   return v === selected;
 }
-/** overview：不含「查看类型」列，不受查看类型筛选影响 */
-function passOverviewFilters(r, f) {
-  return matchDim(r["项目代号"], f.project, false)
-    && matchDim(r["国家"], f.country, false)
-    && matchDim(r["设备品牌"] || "全部", f.brand, true)
-    && (!f.period || String(r["日期"] || "") === f.period)
-    && matchDim(r["队列天数"], f.cohortDay, false);
+function passGlobal(r, g) {
+  return matchDim(r["项目代号"], g.project, false)
+    && matchDim(r["国家"], g.country, false)
+    && matchDim(r["设备品牌"] || "全部", g.brand, true)
+    && (!g.period || String(r["日期"] || "") === g.period);
 }
-/** scenario：含查看类型，筛选全部生效（缺队列天数/查看类型的旧数据在指定筛选时会被排除） */
-function passScenarioFilters(r, f) {
-  if (!matchDim(r["项目代号"], f.project, false)) return false;
-  if (!matchDim(r["国家"], f.country, false)) return false;
-  if (!matchDim(r["设备品牌"] || "全部", f.brand, true)) return false;
-  if (f.period && String(r["日期"] || "") !== f.period) return false;
-  if (f.cohortDay && f.cohortDay !== "全部") {
-    if (String(r["队列天数"] || "") !== f.cohortDay) return false;
-  }
-  if (f.viewType && f.viewType !== "全部") {
-    if (String(r["查看类型"] || "") !== f.viewType) return false;
-  }
-  return true;
+function passCohort(r, cohortDay) {
+  if (!cohortDay || cohortDay === "全部") return true;
+  return String(r["队列天数"] || "") === cohortDay;
 }
-function selectedOverview(f) {
-  if (!state.data) return [];
-  return state.data.overview.filter((r) => passOverviewFilters(r, f));
+function passViewType(r, viewType) {
+  if (!viewType || viewType === "全部") return true;
+  return String(r["查看类型"] || "") === viewType;
 }
-function selectedScenario(f) {
-  if (!state.data) return [];
-  return state.data.scenario.filter((r) => passScenarioFilters(r, f));
-}
-function pickOverviewRow(rows, f) {
+
+function pickOverviewRow(rows, g) {
   if (!rows.length) return null;
-  const country = f.country;
-  const brand = f.brand;
+  const country = g.country;
+  const brand = g.brand;
   if (country !== "全部" && brand !== "全部") return rows[0];
   if (country !== "全部" && brand === "全部") {
     const exact = rows.find((r) => (r["设备品牌"] || "全部") === "全部");
@@ -145,6 +118,19 @@ function pickOverviewRow(rows, f) {
   }
   return out;
 }
+
+function overviewForCohort(cohortDay) {
+  if (!state.data) return [];
+  const g = globalFilters();
+  return state.data.overview.filter((r) => passGlobal(r, g) && passCohort(r, cohortDay));
+}
+function scenariosForLocal(cohortDay, viewType) {
+  if (!state.data) return [];
+  const g = globalFilters();
+  return state.data.scenario.filter((r) =>
+    passGlobal(r, g) && passCohort(r, cohortDay) && passViewType(r, viewType)
+  );
+}
 function buildScenarioList(rows) {
   const agg = {};
   rows.forEach((r) => {
@@ -153,14 +139,7 @@ function buildScenarioList(rows) {
     const viewType = r["查看类型"] || "";
     const k = viewType + "||" + name;
     if (!agg[k]) {
-      agg[k] = {
-        name,
-        viewType,
-        showUsers: 0,
-        showCount: 0,
-        clickUsers: 0,
-        clickCount: 0
-      };
+      agg[k] = { name, viewType, showUsers: 0, showCount: 0, clickUsers: 0, clickCount: 0 };
     }
     const t = agg[k];
     t.showUsers += Number(r["通知用户数"]) || 0;
@@ -176,15 +155,75 @@ function buildScenarioList(rows) {
     }))
     .sort((a, b) => b.ctrUser - a.ctrUser);
 }
-function setSectionTitles(label) {
-  const text = label ? `· ${label}` : "";
-  $("titleScenarioBars").textContent = text;
-  $("titleRates").textContent = text;
-  $("titleScenarioTable").textContent = text;
-  $("filterHint").textContent = state.data
-    ? `当前筛选：${label} → 已同步到上方 KPI、总览效率、场景点击率与场景明细`
-    : "";
+
+function renderKpi() {
+  const day = $("cohortDayOverview").value;
+  const row = pickOverviewRow(overviewForCohort(day), globalFilters());
+  if (!row) {
+    $("stats").innerHTML = '<div class="panel muted">当前条件下暂无 KPI</div>';
+    return;
+  }
+  $("stats").innerHTML = [
+    ["总活跃用户", num(row["总活跃用户"])],
+    ["授权数", num(row["授权数"])],
+    ["发送通知用户", num(row["发送通知用户数"])],
+    ["点击用户", num(row["点击用户数"])]
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
 }
+
+function renderRates() {
+  const day = $("cohortDayRates").value;
+  const row = pickOverviewRow(overviewForCohort(day), globalFilters());
+  if (!row) {
+    $("rateTable").innerHTML = '<p class="muted">当前模块筛选下无总览效率</p>';
+    return;
+  }
+  const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
+  const rates = [
+    ["授权率", pct(row["授权率"])],
+    ["通知渗透率", pct(row["通知渗透率"])],
+    ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
+    ["点击率-用户", pct(row["点击率-用户"])],
+    ["点击率-事件", pct(row["点击率-事件"])],
+    ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
+    [uninstallKey, pct(row[uninstallKey])]
+  ];
+  $("rateTable").innerHTML = `<table><thead><tr><th>指标</th><th class="num">值</th></tr></thead><tbody>${
+    rates.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")
+  }</tbody></table>`;
+}
+
+function renderScenarioBars() {
+  const day = $("cohortDayScenarioBars").value;
+  const viewType = $("viewTypeScenarioBars").value;
+  const list = buildScenarioList(scenariosForLocal(day, viewType));
+  const max = Math.max(...list.map((s) => s.ctrUser), 0.0001);
+  $("scenarioBars").innerHTML = list.length
+    ? list.map((s) => {
+        const w = Math.max(4, Math.round((s.ctrUser / max) * 100));
+        const name = s.viewType ? `${s.viewType} · ${s.name}` : s.name;
+        return `<div class="bar-row"><div title="${name}">${name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(s.ctrUser)}</div></div>`;
+      }).join("")
+    : '<p class="muted">当前模块筛选下无场景点击率</p>';
+}
+
+function renderScenarioTable() {
+  const day = $("cohortDayScenarioTable").value;
+  const viewType = $("viewTypeScenarioTable").value;
+  const list = buildScenarioList(scenariosForLocal(day, viewType));
+  $("scenarioTable").innerHTML = list.length
+    ? `<table><thead><tr>
+        <th>查看类型</th><th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
+        <th class="num">点击用户数</th><th class="num">点击事件数</th>
+        <th class="num">点击率(用户)</th><th class="num">点击率(事件)</th>
+      </tr></thead><tbody>${list.map((s) => `<tr>
+        <td>${s.viewType || "—"}</td><td>${s.name}</td><td class="num">${num(s.showUsers)}</td><td class="num">${num(s.showCount)}</td>
+        <td class="num">${num(s.clickUsers)}</td><td class="num">${num(s.clickCount)}</td>
+        <td class="num">${pct(s.ctrUser)}</td><td class="num">${pct(s.ctrEvent)}</td>
+      </tr>`).join("")}</tbody></table>`
+    : '<p class="muted">当前模块筛选下无场景明细</p>';
+}
+
 function renderSources() {
   const el = $("sourceList");
   if (!state.data) {
@@ -200,82 +239,50 @@ function renderSources() {
     bad ? `<div class="err-text">${bad}</div>` : ""
   ].join("");
 }
-function render() {
-  const f = filters();
-  const label = filterLabel(f);
-  setSectionTitles(label);
 
-  const overviewRows = selectedOverview(f);
-  const scenarioRows = selectedScenario(f);
-  const row = pickOverviewRow(overviewRows, f);
-  const scenarioList = buildScenarioList(scenarioRows);
-
-  if (!row) {
-    $("stats").innerHTML = '<div class="panel muted">当前筛选下暂无总览数据。请调整筛选或重新加载 Sheet。</div>';
-    $("rateTable").innerHTML = '<p class="muted">当前筛选下无总览效率数据</p>';
-  } else {
-    $("stats").innerHTML = [
-      ["总活跃用户", num(row["总活跃用户"])],
-      ["授权数", num(row["授权数"])],
-      ["发送通知用户", num(row["发送通知用户数"])],
-      ["点击用户", num(row["点击用户数"])]
-    ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
-
-    const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
-    const rates = [
-      ["授权率", pct(row["授权率"])],
-      ["通知渗透率", pct(row["通知渗透率"])],
-      ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
-      ["点击率-用户", pct(row["点击率-用户"])],
-      ["点击率-事件", pct(row["点击率-事件"])],
-      ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
-      [uninstallKey.replace(/^D\d+/, "") === "卸载率" ? uninstallKey : uninstallKey, pct(row[uninstallKey])]
-    ];
-    $("rateTable").innerHTML = `<table><thead><tr><th>指标</th><th class="num">值</th></tr></thead><tbody>${
-      rates.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")
-    }</tbody></table>`;
-  }
-
-  const max = Math.max(...scenarioList.map((s) => s.ctrUser), 0.0001);
-  $("scenarioBars").innerHTML = scenarioList.length
-    ? scenarioList.map((s) => {
-        const w = Math.max(4, Math.round((s.ctrUser / max) * 100));
-        const name = s.viewType ? `${s.viewType} · ${s.name}` : s.name;
-        return `<div class="bar-row"><div title="${name}">${name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(s.ctrUser)}</div></div>`;
-      }).join("")
-    : '<p class="muted">当前筛选下无场景点击率数据（检查队列天数/国家/查看类型是否在 panel_scenario 中有对应行）</p>';
-
-  $("scenarioTable").innerHTML = scenarioList.length
-    ? `<table><thead><tr>
-        <th>查看类型</th><th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
-        <th class="num">点击用户数</th><th class="num">点击事件数</th>
-        <th class="num">点击率(用户)</th><th class="num">点击率(事件)</th>
-      </tr></thead><tbody>${scenarioList.map((s) => `<tr>
-        <td>${s.viewType || "—"}</td><td>${s.name}</td><td class="num">${num(s.showUsers)}</td><td class="num">${num(s.showCount)}</td>
-        <td class="num">${num(s.clickUsers)}</td><td class="num">${num(s.clickCount)}</td>
-        <td class="num">${pct(s.ctrUser)}</td><td class="num">${pct(s.ctrEvent)}</td>
-      </tr>`).join("")}</tbody></table>`
-    : '<p class="muted">当前筛选下无场景明细</p>';
-
+function renderAll() {
+  renderKpi();
+  renderRates();
+  renderScenarioBars();
+  renderScenarioTable();
   renderSources();
 }
+
+function preferDay0(days) {
+  if (days.includes("Day0")) return "Day0";
+  return days[0] || "全部";
+}
+
 function syncFilters() {
   const meta = state.data.meta || {};
   fillSelect($("project"), ["全部", ...(meta.projects || [])], true);
   fillSelect($("country"), ["全部", ...(meta.countries || [])], true);
   fillSelect($("brand"), ["全部", ...(meta.brands || [])], true);
   fillSelect($("period"), meta.periods || [], true);
-  const days = meta.cohortDays || [];
-  fillSelect($("cohortDay"), days.length ? ["全部", ...days] : ["全部"], true);
-  fillSelect($("viewType"), meta.viewTypes && meta.viewTypes.length ? ["全部", ...meta.viewTypes] : ["全部"], true);
   if (!$("period").value && meta.periods && meta.periods[0]) $("period").value = meta.periods[0];
-  // 默认选 Day0（若有），保证下方图表不会混多天
-  if (days.includes("Day0")) $("cohortDay").value = "Day0";
-  else if (days.length && (!$("cohortDay").value || $("cohortDay").value === "全部")) $("cohortDay").value = days[0];
+
+  const days = meta.cohortDays || [];
+  const dayOpts = days.length ? ["全部", ...days] : ["全部"];
+  const viewOpts = meta.viewTypes && meta.viewTypes.length ? ["全部", ...meta.viewTypes] : ["全部"];
+  const defaultDay = preferDay0(days);
+
+  [
+    "cohortDayOverview",
+    "cohortDayRates",
+    "cohortDayScenarioBars",
+    "cohortDayScenarioTable"
+  ].forEach((id) => {
+    fillSelect($(id), dayOpts, true);
+    if (!$(id).value || $(id).value === "全部") $(id).value = defaultDay;
+  });
+  ["viewTypeScenarioBars", "viewTypeScenarioTable"].forEach((id) => {
+    fillSelect($(id), viewOpts, true);
+  });
 }
+
 async function loadSheets() {
   const urls = parseUrlsFromTextarea();
-  if (!urls.length) return toast("请先粘贴至少一个 Google Sheet 链接（每行一个）");
+  if (!urls.length) return toast("请先粘贴至少一个 Google Sheet 链接");
   setStatus("加载中…", "run");
   $("btnLoad").disabled = true;
   try {
@@ -289,7 +296,7 @@ async function loadSheets() {
     state.data = json;
     localStorage.setItem(STORAGE_KEY, urls.join("\n"));
     syncFilters();
-    render();
+    renderAll();
     const n = json.meta.sourceCount || (json.sources || []).length;
     const errN = (json.errors || []).length;
     setStatus(`已加载 ${n} 个项目 · ${json.meta.overviewRows}/${json.meta.scenarioRows} 行` + (errN ? ` · ${errN} 失败` : ""), errN ? "warn" : "ok");
@@ -298,18 +305,27 @@ async function loadSheets() {
     state.data = null;
     setStatus(String(err.message || err), "err");
     toast(String(err.message || err));
-    render();
+    renderAll();
   } finally {
     $("btnLoad").disabled = false;
   }
 }
+
 function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
-  ["project", "country", "brand", "period", "cohortDay", "viewType"].forEach((id) => {
-    $(id).addEventListener("change", render);
-  });
+  ["project", "country", "brand", "period"].forEach((id) => $(id).addEventListener("change", renderAll));
+
+  $("cohortDayOverview").addEventListener("change", renderKpi);
+  $("cohortDayRates").addEventListener("change", renderRates);
+
+  // 两个场景模块可独立筛选；也可选同步——这里独立，互不影响
+  $("cohortDayScenarioBars").addEventListener("change", renderScenarioBars);
+  $("viewTypeScenarioBars").addEventListener("change", renderScenarioBars);
+  $("cohortDayScenarioTable").addEventListener("change", renderScenarioTable);
+  $("viewTypeScenarioTable").addEventListener("change", renderScenarioTable);
+
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
   if (saved) $("sheetUrls").value = saved;
-  render();
+  renderAll();
 }
 bind();
