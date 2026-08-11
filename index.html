@@ -1,0 +1,66 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>通知运营看板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <h1>通知运营看板</h1>
+        <p class="sub">多品类 / 多项目独立数据源。每个项目可对应不同的 Google Apps Script，由 Vercel 服务端代理读取与拉取。</p>
+      </div>
+      <div id="statusPill" class="pill">未加载</div>
+    </div>
+
+    <section class="panel">
+      <h2>筛选与操作</h2>
+      <div class="filters">
+        <label>品类
+          <select id="category"></select>
+        </label>
+        <label>项目
+          <select id="project"></select>
+        </label>
+        <label>国家
+          <select id="country"></select>
+        </label>
+        <label>日期区间
+          <select id="period"></select>
+        </label>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button id="btnLoad" class="secondary" type="button">刷新展示数据</button>
+        <button id="btnPull" type="button">拉取 GA4 并更新</button>
+      </div>
+      <p class="muted" style="margin:10px 0 0;font-size:12px" id="projectMeta"></p>
+    </section>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="grid2" style="margin-top:16px">
+      <div class="panel">
+        <h2>场景点击率（用户）</h2>
+        <div class="bars" id="scenarioBars"></div>
+      </div>
+      <div class="panel">
+        <h2>总览效率</h2>
+        <div id="rateTable"></div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:16px">
+      <h2>场景明细（绝对数）</h2>
+      <div style="overflow:auto" id="scenarioTable"></div>
+    </section>
+  </div>
+  <div id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
