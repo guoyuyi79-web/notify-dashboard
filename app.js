@@ -98,6 +98,45 @@ function globalFilters() {
     period: $("period").value || ""
   };
 }
+
+/** 模块筛选项：有值则覆盖全局；全部则跟全局 */
+function readDim(modId, globalVal) {
+  const el = $(modId);
+  if (!el) return globalVal;
+  const v = el.value;
+  if (!v || v === ALL || v === "全部" || v === "跟随全局") return globalVal;
+  return v;
+}
+
+function filtersFor(scope) {
+  const g = globalFilters();
+  if (scope === "overview") {
+    return {
+      project: g.project,
+      country: readDim("countryOverview", g.country),
+      brand: readDim("brandOverview", g.brand),
+      period: readDim("periodOverview", g.period) || g.period
+    };
+  }
+  if (scope === "scenarioBars") {
+    return {
+      project: g.project,
+      country: readDim("countryScenarioBars", g.country),
+      brand: readDim("brandScenarioBars", g.brand),
+      period: readDim("periodScenarioBars", g.period) || g.period
+    };
+  }
+  if (scope === "scenarioTable") {
+    return {
+      project: g.project,
+      country: readDim("countryScenarioTable", g.country),
+      brand: readDim("brandScenarioTable", g.brand),
+      period: readDim("periodScenarioTable", g.period) || g.period
+    };
+  }
+  return g;
+}
+
 function matchDim(rowVal, selected, emptyAsAll) {
   if (!selected || selected === "全部") return true;
   const v = rowVal === undefined || rowVal === null || String(rowVal).trim() === ""
@@ -118,6 +157,20 @@ function passCohort(r, cohortDay) {
 function passViewType(r, viewType) {
   if (!viewType || viewType === "全部" || viewType === ALL) return true;
   return String(r["查看类型"] || "") === viewType;
+}
+
+/** 国家/品牌选「全部」时优先用汇总行，避免各国加总重复 */
+function preferSummaryRows(rows, g) {
+  let out = rows || [];
+  if (!g.country || g.country === "全部") {
+    const allC = out.filter((r) => r["国家"] === "全部");
+    if (allC.length) out = allC;
+  }
+  if (!g.brand || g.brand === "全部") {
+    const allB = out.filter((r) => (r["设备品牌"] || "全部") === "全部");
+    if (allB.length) out = allB;
+  }
+  return out;
 }
 
 function pickOverviewRow(rows, g) {
@@ -153,26 +206,29 @@ function pickOverviewRow(rows, g) {
   out["点击率-用户"] = showUsers ? clickUsers / showUsers : 0;
   out["点击率-事件"] = showCount ? clickCount / showCount : 0;
   out["人均点击"] = clickUsers ? clickCount / clickUsers : 0;
+  const rateKeys = [];
   const uninstallKey = Object.keys(rows[0]).find((k) => /卸载率/.test(k));
-  if (uninstallKey) {
-    let removeEst = 0;
+  if (uninstallKey) rateKeys.push(uninstallKey);
+  if (Object.prototype.hasOwnProperty.call(rows[0], "留存率")) rateKeys.push("留存率");
+  rateKeys.forEach((rk) => {
+    let est = 0;
     let baseSum = 0;
     rows.forEach((r) => {
       const b = Number(r["总活跃用户"]) || 0;
-      const rate = Number(r[uninstallKey]) || 0;
-      removeEst += b * rate;
+      const rate = Number(r[rk]) || 0;
+      est += b * rate;
       baseSum += b;
     });
-    out[uninstallKey] = baseSum ? removeEst / baseSum : 0;
-  }
+    out[rk] = baseSum ? est / baseSum : 0;
+  });
   return out;
 }
 
 /** 项目=全部时按项目拆开，便于对比；单项目则返回 1 列 */
-function overviewByProject(cohortDay) {
-  const g = globalFilters();
+function overviewByProject(cohortDay, scope) {
+  const g = filtersFor(scope || "overview");
   if (g.project && g.project !== "全部") {
-    const row = pickOverviewRow(overviewForCohort(cohortDay), g);
+    const row = pickOverviewRow(overviewForScope(cohortDay, scope), g);
     return row ? [{ project: g.project, row }] : [];
   }
   const projects = (state.data && state.data.meta && state.data.meta.projects) || [];
@@ -181,21 +237,29 @@ function overviewByProject(cohortDay) {
     : [...new Set((state.data.overview || []).map((r) => r["项目代号"]).filter(Boolean))];
   return list.map((project) => {
     const gOne = { ...g, project };
-    const rows = (state.data.overview || []).filter((r) => passGlobal(r, gOne) && passCohort(r, cohortDay));
+    const rows = preferSummaryRows(
+      (state.data.overview || []).filter((r) => passGlobal(r, gOne) && passCohort(r, cohortDay)),
+      gOne
+    );
     const row = pickOverviewRow(rows, gOne);
     return row ? { project, row } : null;
   }).filter(Boolean);
 }
 
-function kpiMetricsFromOverview(row) {
+function kpiMetricsFromOverview(row, retentionExtras) {
   const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
   const base = Number(row["总活跃用户"]) || 0;
   const showUsers = Number(row["发送通知用户数"]) || 0;
   const showCount = Number(row["发通知总数"]) || 0;
   const penetration = base ? showUsers / base : 0;
   const avgNotify = base ? showCount / base : 0;
-  return [
-    { key: "总活跃用户", kind: "abs", value: Number(row["总活跃用户"]) || 0 },
+  const head = [
+    { key: "总活跃用户", kind: "abs", value: Number(row["总活跃用户"]) || 0 }
+  ];
+  const retains = (retentionExtras && retentionExtras.length)
+    ? retentionExtras
+    : [{ key: "留存率", kind: "rate", value: Number(row["留存率"]) || 0 }];
+  return head.concat(retains).concat([
     { key: "授权数", kind: "abs", value: Number(row["授权数"]) || 0 },
     { key: "发送通知用户", kind: "abs", value: Number(row["发送通知用户数"]) || 0 },
     { key: "点击用户", kind: "abs", value: Number(row["点击用户数"]) || 0 },
@@ -206,7 +270,26 @@ function kpiMetricsFromOverview(row) {
     { key: "点击率-事件", kind: "rate", value: Number(row["点击率-事件"]) || 0 },
     { key: "人均点击", kind: "avg", value: Number(row["人均点击"]) || 0 },
     { key: uninstallKey, kind: "rate", value: Number(row[uninstallKey]) || 0 }
-  ];
+  ]);
+}
+
+/** 拉取某项目 Day0–Dn 全部留存 */
+function retentionMetricsForProject(project, scope) {
+  const g = { ...filtersFor(scope || "overview"), project };
+  const days = ((state.data && state.data.meta && state.data.meta.cohortDays) || []).slice();
+  if (!days.length) return [];
+  return days.map((day) => {
+    const rows = preferSummaryRows(
+      (state.data.overview || []).filter((r) => passGlobal(r, g) && passCohort(r, day)),
+      g
+    );
+    const row = pickOverviewRow(rows, g);
+    return {
+      key: `${day}留存`,
+      kind: "rate",
+      value: row ? (Number(row["留存率"]) || 0) : 0
+    };
+  });
 }
 
 function formatKpiValue(m) {
@@ -235,19 +318,25 @@ function formatDelta(m, baseM) {
   return `<span class="${cls}">${text}</span>`;
 }
 
-function overviewForCohort(cohortDay) {
+function overviewForScope(cohortDay, scope) {
   if (!state.data) return [];
-  const g = globalFilters();
-  return state.data.overview.filter((r) => passGlobal(r, g) && passCohort(r, cohortDay));
-}
-function scenariosForLocal(cohortDay, viewType) {
-  if (!state.data) return [];
-  const g = globalFilters();
-  return state.data.scenario.filter((r) =>
-    passGlobal(r, g) && passCohort(r, cohortDay) && passViewType(r, viewType)
+  const g = filtersFor(scope || "overview");
+  return preferSummaryRows(
+    state.data.overview.filter((r) => passGlobal(r, g) && passCohort(r, cohortDay)),
+    g
   );
 }
-function buildScenarioList(rows, splitByProject, cohortDay) {
+function scenariosForScope(cohortDay, viewType, scope) {
+  if (!state.data) return [];
+  const g = filtersFor(scope || "scenarioTable");
+  return preferSummaryRows(
+    state.data.scenario.filter((r) =>
+      passGlobal(r, g) && passCohort(r, cohortDay) && passViewType(r, viewType)
+    ),
+    g
+  );
+}
+function buildScenarioList(rows, splitByProject, cohortDay, scope) {
   const agg = {};
   rows.forEach((r) => {
     const name = r["通知场景"] || "";
@@ -264,21 +353,23 @@ function buildScenarioList(rows, splitByProject, cohortDay) {
     t.clickUsers += Number(r["点击用户数"]) || 0;
     t.clickCount += Number(r["点击事件数"]) || 0;
   });
-  const authByProject = {};
-  const overviewCols = overviewByProject(cohortDay || ($("cohortDayScenarioTable") && $("cohortDayScenarioTable").value) || "");
+  const baseByProject = {};
+  const overviewCols = overviewByProject(
+    cohortDay || ($("cohortDayScenarioTable") && $("cohortDayScenarioTable").value) || "",
+    scope || "scenarioTable"
+  );
   overviewCols.forEach((c) => {
-    authByProject[c.project] = Number(c.row["授权数"]) || 0;
+    baseByProject[c.project] = Number(c.row["总活跃用户"]) || 0;
   });
-  // 单项目筛选时 overviewByProject 只有一列
-  const authFallback = overviewCols.length === 1 ? Number(overviewCols[0].row["授权数"]) || 0 : 0;
+  const baseFallback = overviewCols.length === 1 ? Number(overviewCols[0].row["总活跃用户"]) || 0 : 0;
 
   return Object.values(agg)
     .map((s) => {
-      const auth = authByProject[s.project] || authFallback || 0;
+      const base = baseByProject[s.project] || baseFallback || 0;
       return {
         ...s,
-        authUsers: auth,
-        avgNotify: auth > 0 ? s.showCount / auth : 0,
+        baseUsers: base,
+        avgNotify: base > 0 ? s.showCount / base : 0,
         ctrUser: s.showUsers ? s.clickUsers / s.showUsers : 0,
         ctrEvent: s.showCount ? s.clickCount / s.showCount : 0,
         avgClick: s.clickUsers ? s.clickCount / s.clickUsers : 0
@@ -292,8 +383,8 @@ function buildScenarioList(rows, splitByProject, cohortDay) {
 }
 
 /** 按「查看类型 + 通知场景」同名对齐，跨项目对比（忽略空格差异） */
-function buildScenarioMatrix(rows, cohortDay) {
-  const flat = buildScenarioList(rows, true, cohortDay);
+function buildScenarioMatrix(rows, cohortDay, scope) {
+  const flat = buildScenarioList(rows, true, cohortDay, scope);
   const map = {};
   flat.forEach((s) => {
     const key = normSceneKey(s.viewType, s.name);
@@ -330,7 +421,7 @@ function scenarioMetricDefs() {
   return [
     { key: "通知用户数", kind: "abs", get: (s) => s.showUsers },
     { key: "通知事件数", kind: "abs", get: (s) => s.showCount },
-    { key: "人均通知(通知事件数/授权用户数)", kind: "avg", get: (s) => s.avgNotify },
+    { key: "人均通知(通知事件数/first_open)", kind: "avg", get: (s) => s.avgNotify },
     { key: "点击用户数", kind: "abs", get: (s) => s.clickUsers },
     { key: "点击事件数", kind: "abs", get: (s) => s.clickCount },
     { key: "点击率(用户)", kind: "rate", get: (s) => s.ctrUser },
@@ -392,7 +483,7 @@ function renderScenarioCompareDetail(matrix) {
 
 function renderKpi() {
   const day = $("cohortDayOverview").value;
-  let cols = overviewByProject(day);
+  let cols = overviewByProject(day, "overview");
   if (!cols.length) {
     $("stats").innerHTML = '<p class="muted">当前条件下暂无 KPI</p>';
     return;
@@ -401,7 +492,9 @@ function renderKpi() {
   const baseline = baselineValue();
   cols = orderProjects(cols.map((c) => c.project)).map((p) => cols.find((c) => c.project === p)).filter(Boolean);
 
-  const metricSets = cols.map((c) => kpiMetricsFromOverview(c.row));
+  const metricSets = cols.map((c) =>
+    kpiMetricsFromOverview(c.row, retentionMetricsForProject(c.project, "overview"))
+  );
   const baseIdx = baseline !== NONE
     ? cols.findIndex((c) => c.project === baseline)
     : -1;
@@ -438,14 +531,14 @@ function renderKpi() {
 function renderScenarioBars() {
   const day = $("cohortDayScenarioBars").value;
   const viewType = $("viewTypeScenarioBars").value;
-  const rows = scenariosForLocal(day, viewType);
+  const rows = scenariosForScope(day, viewType, "scenarioBars");
 
   if (shouldCompareProjects(rows)) {
-    $("scenarioBars").innerHTML = renderScenarioCompareCtr(buildScenarioMatrix(rows, day));
+    $("scenarioBars").innerHTML = renderScenarioCompareCtr(buildScenarioMatrix(rows, day, "scenarioBars"));
     return;
   }
 
-  const list = buildScenarioList(rows, false, day);
+  const list = buildScenarioList(rows, false, day, "scenarioBars");
   const max = Math.max(...list.map((s) => s.ctrUser), 0.0001);
   $("scenarioBars").innerHTML = list.length
     ? list.map((s) => {
@@ -460,19 +553,19 @@ function renderScenarioBars() {
 function renderScenarioTable() {
   const day = $("cohortDayScenarioTable").value;
   const viewType = $("viewTypeScenarioTable").value;
-  const rows = scenariosForLocal(day, viewType);
+  const rows = scenariosForScope(day, viewType, "scenarioTable");
 
   if (shouldCompareProjects(rows)) {
-    $("scenarioTable").innerHTML = renderScenarioCompareDetail(buildScenarioMatrix(rows, day));
+    $("scenarioTable").innerHTML = renderScenarioCompareDetail(buildScenarioMatrix(rows, day, "scenarioTable"));
     return;
   }
 
-  const list = buildScenarioList(rows, true, day);
+  const list = buildScenarioList(rows, true, day, "scenarioTable");
   $("scenarioTable").innerHTML = list.length
     ? `<div class="table-wrap"><table><thead><tr>
         <th>项目代号</th><th>查看类型</th><th>通知场景</th>
         <th class="num">通知用户数</th><th class="num">通知事件数</th>
-        <th class="num">人均通知(通知事件数/授权用户数)</th>
+        <th class="num">人均通知(通知事件数/first_open)</th>
         <th class="num">点击用户数</th><th class="num">点击事件数</th>
         <th class="num">点击率(用户)</th><th class="num">点击率(事件)</th>
         <th class="num">人均点击</th>
@@ -534,12 +627,29 @@ function syncBaselineOptions() {
 function syncFilters() {
   const meta = state.data.meta || {};
   const allOpt = { value: ALL, label: "全部" };
+  const countryOpts = [allOpt, ...(meta.countries || []).map((v) => ({ value: v, label: v }))];
+  const brandOpts = [allOpt, ...(meta.brands || []).map((v) => ({ value: v, label: v }))];
+  const periodOpts = (meta.periods || []).map((v) => ({ value: v, label: v }));
+
   fillSelect($("project"), [allOpt, ...(meta.projects || [])], true);
-  fillSelect($("country"), [allOpt, ...(meta.countries || []).map((v) => ({ value: v, label: v }))], true);
-  fillSelect($("brand"), [allOpt, ...(meta.brands || []).map((v) => ({ value: v, label: v }))], true);
-  fillSelect($("period"), meta.periods || [], true);
+  fillSelect($("country"), countryOpts, true);
+  fillSelect($("brand"), brandOpts, true);
+  fillSelect($("period"), periodOpts, true);
   if (!$("period").value && meta.periods && meta.periods[0]) $("period").value = meta.periods[0];
   if (!$("project").value) $("project").value = ALL;
+
+  [
+    "countryOverview", "countryScenarioBars", "countryScenarioTable"
+  ].forEach((id) => fillSelect($(id), countryOpts, true));
+  [
+    "brandOverview", "brandScenarioBars", "brandScenarioTable"
+  ].forEach((id) => fillSelect($(id), brandOpts, true));
+  [
+    "periodOverview", "periodScenarioBars", "periodScenarioTable"
+  ].forEach((id) => {
+    fillSelect($(id), [{ value: ALL, label: "跟随全局" }, ...periodOpts], true);
+    if (!$(id).value) $(id).value = ALL;
+  });
 
   const days = meta.cohortDays || [];
   const dayOpts = days.length ? [{ value: ALL, label: "全部" }, ...days.map((d) => ({ value: d, label: d }))] : [{ value: ALL, label: "全部" }];
@@ -594,12 +704,19 @@ function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
   ["project", "country", "brand", "period", "baselineProject"].forEach((id) => $(id).addEventListener("change", renderAll));
 
-  $("cohortDayOverview").addEventListener("change", renderKpi);
+  [
+    "countryOverview", "brandOverview", "periodOverview", "cohortDayOverview"
+  ].forEach((id) => $(id).addEventListener("change", renderKpi));
 
-  $("cohortDayScenarioBars").addEventListener("change", renderScenarioBars);
-  $("viewTypeScenarioBars").addEventListener("change", renderScenarioBars);
-  $("cohortDayScenarioTable").addEventListener("change", renderScenarioTable);
-  $("viewTypeScenarioTable").addEventListener("change", renderScenarioTable);
+  [
+    "countryScenarioBars", "brandScenarioBars", "periodScenarioBars",
+    "cohortDayScenarioBars", "viewTypeScenarioBars"
+  ].forEach((id) => $(id).addEventListener("change", renderScenarioBars));
+
+  [
+    "countryScenarioTable", "brandScenarioTable", "periodScenarioTable",
+    "cohortDayScenarioTable", "viewTypeScenarioTable"
+  ].forEach((id) => $(id).addEventListener("change", renderScenarioTable));
 
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
   if (saved) $("sheetUrls").value = saved;

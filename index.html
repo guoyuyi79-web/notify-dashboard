@@ -7,14 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260811c" />
+  <link rel="stylesheet" href="/styles.css?v=20260811g" />
 </head>
 <body>
   <div class="wrap">
     <header class="hero">
       <div>
         <h1>通知运营看板</h1>
-        <p class="sub">项目代号选<strong>全部</strong> + 选择<strong>对比基准</strong>后，KPI 与同名场景会分列对比并显示差值。</p>
+        <p class="sub">项目代号选<strong>全部</strong> + 选择<strong>对比基准</strong>后分列对比。各模块可单独筛国家/品牌/日期/队列天。</p>
       </div>
       <div id="statusPill" class="pill">未加载</div>
     </header>
@@ -31,7 +31,7 @@
 
     <section class="panel">
       <h2>2. 全局筛选</h2>
-      <p class="muted tip">多项目对比：项目代号保持「全部」，并在下方选择<strong>对比基准</strong>项目；其他项目会显示相对基准的差值。</p>
+      <p class="muted tip">多项目对比：项目代号保持「全部」，并选择<strong>对比基准</strong>。下面三个模块还可再覆盖国家/品牌/日期等维度。</p>
       <div class="filters">
         <label>项目代号<select id="project"></select></label>
         <label>对比基准<select id="baselineProject"></select></label>
@@ -45,40 +45,47 @@
       <div class="panel-head-row">
         <h2 class="inline-h2">总览 KPI</h2>
         <div class="mod-filters">
-          <label class="mod-filter">队列天数
-            <select id="cohortDayOverview"></select>
-          </label>
+          <label class="mod-filter">国家<select id="countryOverview"></select></label>
+          <label class="mod-filter">设备品牌<select id="brandOverview"></select></label>
+          <label class="mod-filter">日期区间<select id="periodOverview"></select></label>
+          <label class="mod-filter">队列天数<select id="cohortDayOverview"></select></label>
         </div>
       </div>
       <div id="stats"></div>
-      <p class="muted tip" id="kpiHint">比率差值单位为百分点（pp）；人数类为相对基准的涨跌幅 %；人均为绝对差值。</p>
+      <p class="muted tip">含 Day0–Dn 留存（DayN activeUsers / Day0 first_open）。比率差值为 pp，人数为涨跌幅 %。</p>
     </section>
 
     <section class="panel">
       <div class="panel-head-row">
         <h2 class="inline-h2">场景点击率（用户）</h2>
         <div class="mod-filters">
+          <label class="mod-filter">国家<select id="countryScenarioBars"></select></label>
+          <label class="mod-filter">设备品牌<select id="brandScenarioBars"></select></label>
+          <label class="mod-filter">日期区间<select id="periodScenarioBars"></select></label>
           <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
           <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
         </div>
       </div>
       <div id="scenarioBars" class="bars"></div>
-      <p class="muted tip">多项目时按「查看类型 + 通知场景」同名对齐；仅一方有的场景，另一方显示 —。</p>
+      <p class="muted tip">多项目时按「查看类型 + 通知场景」同名对齐。</p>
     </section>
 
     <section class="panel">
       <div class="panel-head-row">
         <h2 class="inline-h2">场景明细（绝对数）</h2>
         <div class="mod-filters">
+          <label class="mod-filter">国家<select id="countryScenarioTable"></select></label>
+          <label class="mod-filter">设备品牌<select id="brandScenarioTable"></select></label>
+          <label class="mod-filter">日期区间<select id="periodScenarioTable"></select></label>
           <label class="mod-filter">队列天数<select id="cohortDayScenarioTable"></select></label>
           <label class="mod-filter">查看类型<select id="viewTypeScenarioTable"></select></label>
         </div>
       </div>
       <div id="scenarioTable" class="table-wrap"></div>
-      <p class="muted tip">多项目明细同样按同名场景对齐，并相对对比基准显示差值。</p>
+      <p class="muted tip">人均通知 = 场景通知事件数 / Day0 first_open（与总览同分母）。</p>
     </section>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260811e"></script>
+  <script src="/app.js?v=20260811g"></script>
 </body>
 </html>
