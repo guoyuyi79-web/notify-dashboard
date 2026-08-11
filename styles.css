@@ -25,7 +25,27 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
 .sub { margin: 0; color: var(--muted); max-width: 62ch; line-height: 1.55; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
 .panel h2 { margin: 0 0 12px; font-size: 15px; }
-.h2-sub { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.inline-h2 { margin: 0; font-size: 15px; }
+.panel-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.mod-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mod-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.mod-filter select {
+  padding: 6px 8px;
+  min-width: 110px;
+}
 .url-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 input, select, button { font: inherit; border-radius: 10px; border: 1px solid var(--line); padding: 10px 12px; background: #fff; color: var(--ink); }
 button { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
