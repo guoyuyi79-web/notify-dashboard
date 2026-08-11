@@ -14,7 +14,7 @@
     <header class="hero">
       <div>
         <h1>通知运营看板</h1>
-        <p class="sub">每个项目用自己的 Google 表格跑脚本并共享 → 在此粘贴<strong>一个或多个</strong>表格链接。网站只读取清洗展示，不拉 GA4、不存项目令牌。</p>
+        <p class="sub">每个项目用自己的 Google 表格跑脚本并共享 → 在此粘贴<strong>一个或多个</strong>表格链接。下方 KPI / 总览效率 / 场景图与明细都会跟随筛选联动。</p>
       </div>
       <div id="statusPill" class="pill">未加载</div>
     </header>
@@ -25,12 +25,12 @@
       <div class="url-row actions">
         <button id="btnLoad" type="button">加载并清洗全部</button>
       </div>
-      <p class="muted tip">每个表格需共享为「知道链接的任何人 = 查看者」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。加载后可用「项目代号」筛选。</p>
+      <p class="muted tip">表格需共享为「知道链接的任何人 = 查看者」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。<br/>队列天数下拉来自表格实际数据；缺 Day0 时请在 Sheet 配置 <code>Day0-Day10</code> 后重新拉取。</p>
       <div id="sourceList" class="source-list muted"></div>
     </section>
 
     <section class="panel">
-      <h2>2. 筛选</h2>
+      <h2>2. 筛选（联动下方全部图表）</h2>
       <div class="filters">
         <label>项目代号<select id="project"></select></label>
         <label>国家<select id="country"></select></label>
@@ -39,23 +39,24 @@
         <label>队列天数<select id="cohortDay"></select></label>
         <label>查看类型<select id="viewType"></select></label>
       </div>
+      <p id="filterHint" class="muted tip"></p>
     </section>
 
     <section class="stats" id="stats"></section>
 
     <section class="grid2">
       <div class="panel">
-        <h2>场景点击率（用户）</h2>
+        <h2>场景点击率（用户） <span id="titleScenarioBars" class="h2-sub"></span></h2>
         <div id="scenarioBars" class="bars"></div>
       </div>
       <div class="panel">
-        <h2>总览效率（清洗后）</h2>
+        <h2>总览效率 <span id="titleRates" class="h2-sub"></span></h2>
         <div id="rateTable"></div>
       </div>
     </section>
 
     <section class="panel">
-      <h2>场景明细（绝对数）</h2>
+      <h2>场景明细（绝对数） <span id="titleScenarioTable" class="h2-sub"></span></h2>
       <div id="scenarioTable" class="table-wrap"></div>
     </section>
   </div>
