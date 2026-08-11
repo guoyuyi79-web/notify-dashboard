@@ -121,6 +121,50 @@ function pickOverviewRow(rows, g) {
   return out;
 }
 
+/** 项目=全部时按项目拆开，便于对比；单项目则返回 1 列 */
+function overviewByProject(cohortDay) {
+  const g = globalFilters();
+  if (g.project && g.project !== "全部") {
+    const row = pickOverviewRow(overviewForCohort(cohortDay), g);
+    return row ? [{ project: g.project, row }] : [];
+  }
+  const projects = (state.data && state.data.meta && state.data.meta.projects) || [];
+  const list = projects.length
+    ? projects
+    : [...new Set((state.data.overview || []).map((r) => r["项目代号"]).filter(Boolean))];
+  return list.map((project) => {
+    const gOne = { ...g, project };
+    const rows = (state.data.overview || []).filter((r) => passGlobal(r, gOne) && passCohort(r, cohortDay));
+    const row = pickOverviewRow(rows, gOne);
+    return row ? { project, row } : null;
+  }).filter(Boolean);
+}
+
+function rateRowsFromOverview(row) {
+  const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
+  const base = Number(row["总活跃用户"]) || 0;
+  const showUsers = Number(row["发送通知用户数"]) || 0;
+  const penetration = base ? showUsers / base : 0;
+  return [
+    ["授权率", pct(row["授权率"])],
+    ["通知渗透率", pct(penetration)],
+    ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
+    ["点击率-用户", pct(row["点击率-用户"])],
+    ["点击率-事件", pct(row["点击率-事件"])],
+    ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
+    [uninstallKey, pct(row[uninstallKey])]
+  ];
+}
+
+function kpiRowsFromOverview(row) {
+  return [
+    ["总活跃用户", num(row["总活跃用户"])],
+    ["授权数", num(row["授权数"])],
+    ["发送通知用户", num(row["发送通知用户数"])],
+    ["点击用户", num(row["点击用户数"])]
+  ];
+}
+
 function overviewForCohort(cohortDay) {
   if (!state.data) return [];
   const g = globalFilters();
@@ -133,15 +177,16 @@ function scenariosForLocal(cohortDay, viewType) {
     passGlobal(r, g) && passCohort(r, cohortDay) && passViewType(r, viewType)
   );
 }
-function buildScenarioList(rows) {
+function buildScenarioList(rows, splitByProject) {
   const agg = {};
   rows.forEach((r) => {
     const name = r["通知场景"] || "";
     if (!name) return;
     const viewType = r["查看类型"] || "";
-    const k = viewType + "||" + name;
+    const project = r["项目代号"] || "";
+    const k = (splitByProject ? project + "||" : "") + viewType + "||" + name;
     if (!agg[k]) {
-      agg[k] = { name, viewType, showUsers: 0, showCount: 0, clickUsers: 0, clickCount: 0 };
+      agg[k] = { project, name, viewType, showUsers: 0, showCount: 0, clickUsers: 0, clickCount: 0 };
     }
     const t = agg[k];
     t.showUsers += Number(r["通知用户数"]) || 0;
@@ -155,60 +200,69 @@ function buildScenarioList(rows) {
       ctrUser: s.showUsers ? s.clickUsers / s.showUsers : 0,
       ctrEvent: s.showCount ? s.clickCount / s.showCount : 0
     }))
-    .sort((a, b) => b.ctrUser - a.ctrUser);
+    .sort((a, b) => {
+      const pc = String(a.project || "").localeCompare(String(b.project || ""), "zh");
+      if (pc) return pc;
+      return b.ctrUser - a.ctrUser;
+    });
 }
 
 function renderKpi() {
   const day = $("cohortDayOverview").value;
-  const row = pickOverviewRow(overviewForCohort(day), globalFilters());
-  if (!row) {
+  const cols = overviewByProject(day);
+  if (!cols.length) {
     $("stats").innerHTML = '<div class="panel muted">当前条件下暂无 KPI</div>';
     return;
   }
-  $("stats").innerHTML = [
-    ["总活跃用户", num(row["总活跃用户"])],
-    ["授权数", num(row["授权数"])],
-    ["发送通知用户", num(row["发送通知用户数"])],
-    ["点击用户", num(row["点击用户数"])]
-  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  if (cols.length === 1) {
+    $("stats").innerHTML = kpiRowsFromOverview(cols[0].row)
+      .map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    return;
+  }
+  const metrics = kpiRowsFromOverview(cols[0].row).map(([k]) => k);
+  const head = `<tr><th>指标</th>${cols.map((c) => `<th class="num">${c.project}</th>`).join("")}</tr>`;
+  const body = metrics.map((metric, i) => {
+    const cells = cols.map((c) => `<td class="num">${kpiRowsFromOverview(c.row)[i][1]}</td>`).join("");
+    return `<tr><td>${metric}</td>${cells}</tr>`;
+  }).join("");
+  $("stats").innerHTML = `<div class="panel compare-panel"><div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div></div>`;
 }
 
 function renderRates() {
   const day = $("cohortDayRates").value;
-  const row = pickOverviewRow(overviewForCohort(day), globalFilters());
-  if (!row) {
+  const cols = overviewByProject(day);
+  if (!cols.length) {
     $("rateTable").innerHTML = '<p class="muted">当前模块筛选下无总览效率</p>';
     return;
   }
-  const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
-  // 渗透率统一：DayN 发送通知用户 / Day0 first_open（总活跃），不读表内旧口径
-  const base = Number(row["总活跃用户"]) || 0;
-  const showUsers = Number(row["发送通知用户数"]) || 0;
-  const penetration = base ? showUsers / base : 0;
-  const rates = [
-    ["授权率", pct(row["授权率"])],
-    ["通知渗透率", pct(penetration)],
-    ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
-    ["点击率-用户", pct(row["点击率-用户"])],
-    ["点击率-事件", pct(row["点击率-事件"])],
-    ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
-    [uninstallKey, pct(row[uninstallKey])]
-  ];
-  $("rateTable").innerHTML = `<table><thead><tr><th>指标</th><th class="num">值</th></tr></thead><tbody>${
-    rates.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")
-  }</tbody></table>`;
+  if (cols.length === 1) {
+    const rates = rateRowsFromOverview(cols[0].row);
+    $("rateTable").innerHTML = `<table><thead><tr><th>指标</th><th class="num">${cols[0].project}</th></tr></thead><tbody>${
+      rates.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")
+    }</tbody></table>`;
+    return;
+  }
+  const metrics = rateRowsFromOverview(cols[0].row).map(([k]) => k);
+  const head = `<tr><th>指标</th>${cols.map((c) => `<th class="num">${c.project}</th>`).join("")}</tr>`;
+  const body = metrics.map((metric, i) => {
+    const cells = cols.map((c) => `<td class="num">${rateRowsFromOverview(c.row)[i][1]}</td>`).join("");
+    return `<tr><td>${metric}</td>${cells}</tr>`;
+  }).join("");
+  $("rateTable").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderScenarioBars() {
   const day = $("cohortDayScenarioBars").value;
   const viewType = $("viewTypeScenarioBars").value;
-  const list = buildScenarioList(scenariosForLocal(day, viewType));
+  const split = !$("project").value || $("project").value === "全部";
+  const list = buildScenarioList(scenariosForLocal(day, viewType), split);
   const max = Math.max(...list.map((s) => s.ctrUser), 0.0001);
   $("scenarioBars").innerHTML = list.length
     ? list.map((s) => {
         const w = Math.max(4, Math.round((s.ctrUser / max) * 100));
-        const name = s.viewType ? `${s.viewType} · ${s.name}` : s.name;
-        return `<div class="bar-row"><div title="${name}">${name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(s.ctrUser)}</div></div>`;
+        const parts = [s.project, s.viewType, s.name].filter(Boolean);
+        const name = parts.join(" · ");
+        return `<div class="bar-row ${split ? "bar-row-wide" : ""}"><div title="${name}">${name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(s.ctrUser)}</div></div>`;
       }).join("")
     : '<p class="muted">当前模块筛选下无场景点击率</p>';
 }
@@ -216,14 +270,15 @@ function renderScenarioBars() {
 function renderScenarioTable() {
   const day = $("cohortDayScenarioTable").value;
   const viewType = $("viewTypeScenarioTable").value;
-  const list = buildScenarioList(scenariosForLocal(day, viewType));
+  const split = !$("project").value || $("project").value === "全部";
+  const list = buildScenarioList(scenariosForLocal(day, viewType), split);
   $("scenarioTable").innerHTML = list.length
     ? `<table><thead><tr>
-        <th>查看类型</th><th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
+        <th>项目代号</th><th>查看类型</th><th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
         <th class="num">点击用户数</th><th class="num">点击事件数</th>
         <th class="num">点击率(用户)</th><th class="num">点击率(事件)</th>
       </tr></thead><tbody>${list.map((s) => `<tr>
-        <td>${s.viewType || "—"}</td><td>${s.name}</td><td class="num">${num(s.showUsers)}</td><td class="num">${num(s.showCount)}</td>
+        <td>${s.project || "—"}</td><td>${s.viewType || "—"}</td><td>${s.name}</td><td class="num">${num(s.showUsers)}</td><td class="num">${num(s.showCount)}</td>
         <td class="num">${num(s.clickUsers)}</td><td class="num">${num(s.clickCount)}</td>
         <td class="num">${pct(s.ctrUser)}</td><td class="num">${pct(s.ctrEvent)}</td>
       </tr>`).join("")}</tbody></table>`

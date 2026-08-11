@@ -74,6 +74,17 @@ label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; margin-bottom: 14px; }
 .bars { display: grid; gap: 8px; }
 .bar-row { display: grid; grid-template-columns: 110px 1fr 56px; gap: 8px; align-items: center; }
+.bar-row-wide { grid-template-columns: minmax(140px, 220px) 1fr 56px; }
+.bar-row > div:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.compare-panel { margin: 0; padding: 0; border: none; background: transparent; }
+.compare-table th.num { font-weight: 600; color: var(--ink); }
+.stats .compare-panel { grid-column: 1 / -1; }
+.stats:has(.compare-panel) { grid-template-columns: 1fr; }
 .bar-track { height: 10px; background: #efe7da; border-radius: 999px; overflow: hidden; }
 .bar-fill { height: 100%; background: var(--accent); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
