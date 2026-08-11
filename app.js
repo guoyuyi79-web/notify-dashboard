@@ -140,40 +140,50 @@ function overviewByProject(cohortDay) {
   }).filter(Boolean);
 }
 
-function rateRowsFromOverview(row) {
+function kpiMetricsFromOverview(row) {
   const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
   const base = Number(row["总活跃用户"]) || 0;
   const showUsers = Number(row["发送通知用户数"]) || 0;
   const penetration = base ? showUsers / base : 0;
   return [
-    ["授权率", pct(row["授权率"])],
-    ["通知渗透率", pct(penetration)],
-    ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
-    ["点击率-用户", pct(row["点击率-用户"])],
-    ["点击率-事件", pct(row["点击率-事件"])],
-    ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
-    [uninstallKey, pct(row[uninstallKey])]
+    { key: "总活跃用户", kind: "abs", value: Number(row["总活跃用户"]) || 0 },
+    { key: "授权数", kind: "abs", value: Number(row["授权数"]) || 0 },
+    { key: "发送通知用户", kind: "abs", value: Number(row["发送通知用户数"]) || 0 },
+    { key: "点击用户", kind: "abs", value: Number(row["点击用户数"]) || 0 },
+    { key: "授权率", kind: "rate", value: Number(row["授权率"]) || 0 },
+    { key: "通知渗透率", kind: "rate", value: penetration },
+    { key: "人均通知数", kind: "avg", value: Number(row["人均通知数"]) || 0 },
+    { key: "点击率-用户", kind: "rate", value: Number(row["点击率-用户"]) || 0 },
+    { key: "点击率-事件", kind: "rate", value: Number(row["点击率-事件"]) || 0 },
+    { key: "人均点击", kind: "avg", value: Number(row["人均点击"]) || 0 },
+    { key: uninstallKey, kind: "rate", value: Number(row[uninstallKey]) || 0 }
   ];
 }
 
-function kpiRowsFromOverview(row) {
-  const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "卸载率";
-  const base = Number(row["总活跃用户"]) || 0;
-  const showUsers = Number(row["发送通知用户数"]) || 0;
-  const penetration = base ? showUsers / base : 0;
-  return [
-    ["总活跃用户", num(row["总活跃用户"])],
-    ["授权数", num(row["授权数"])],
-    ["发送通知用户", num(row["发送通知用户数"])],
-    ["点击用户", num(row["点击用户数"])],
-    ["授权率", pct(row["授权率"])],
-    ["通知渗透率", pct(penetration)],
-    ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
-    ["点击率-用户", pct(row["点击率-用户"])],
-    ["点击率-事件", pct(row["点击率-事件"])],
-    ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
-    [uninstallKey, pct(row[uninstallKey])]
-  ];
+function formatKpiValue(m) {
+  if (m.kind === "abs") return num(m.value);
+  if (m.kind === "rate") return pct(m.value);
+  return Number(m.value).toFixed(2);
+}
+
+function formatDelta(m, baseM) {
+  if (!baseM) return "";
+  const a = Number(m.value) || 0;
+  const b = Number(baseM.value) || 0;
+  let text = "";
+  if (m.kind === "rate") {
+    const pp = (a - b) * 100;
+    text = `${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
+  } else if (m.kind === "avg") {
+    const d = a - b;
+    text = `${d > 0 ? "+" : ""}${d.toFixed(2)}`;
+  } else {
+    if (!b) return "—";
+    const d = ((a - b) / b) * 100;
+    text = `${d > 0 ? "+" : ""}${d.toFixed(1)}%`;
+  }
+  const cls = text.startsWith("+") ? "delta up" : text.startsWith("-") ? "delta down" : "delta flat";
+  return `<span class="${cls}">${text}</span>`;
 }
 
 function overviewForCohort(cohortDay) {
@@ -220,46 +230,53 @@ function buildScenarioList(rows, splitByProject) {
 
 function renderKpi() {
   const day = $("cohortDayOverview").value;
-  const cols = overviewByProject(day);
+  let cols = overviewByProject(day);
   if (!cols.length) {
-    $("stats").innerHTML = '<div class="panel muted">当前条件下暂无 KPI</div>';
+    $("stats").innerHTML = '<p class="muted">当前条件下暂无 KPI</p>';
     return;
   }
-  if (cols.length === 1) {
-    $("stats").innerHTML = kpiRowsFromOverview(cols[0].row)
-      .map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
-    return;
-  }
-  const metrics = kpiRowsFromOverview(cols[0].row).map(([k]) => k);
-  const head = `<tr><th>指标</th>${cols.map((c) => `<th class="num">${c.project}</th>`).join("")}</tr>`;
-  const body = metrics.map((metric, i) => {
-    const cells = cols.map((c) => `<td class="num">${kpiRowsFromOverview(c.row)[i][1]}</td>`).join("");
-    return `<tr><td>${metric}</td>${cells}</tr>`;
-  }).join("");
-  $("stats").innerHTML = `<div class="panel compare-panel"><div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div></div>`;
-}
 
-function renderRates() {
-  const day = $("cohortDayRates").value;
-  const cols = overviewByProject(day);
-  if (!cols.length) {
-    $("rateTable").innerHTML = '<p class="muted">当前模块筛选下无总览效率</p>';
-    return;
+  const baseline = ($("baselineProject") && $("baselineProject").value) || "无";
+  if (baseline && baseline !== "无") {
+    cols = [...cols].sort((a, b) => {
+      if (a.project === baseline) return -1;
+      if (b.project === baseline) return 1;
+      return String(a.project).localeCompare(String(b.project), "zh");
+    });
   }
+
+  const metricSets = cols.map((c) => kpiMetricsFromOverview(c.row));
+  const baseIdx = baseline && baseline !== "无"
+    ? cols.findIndex((c) => c.project === baseline)
+    : -1;
+  const baseMetrics = baseIdx >= 0 ? metricSets[baseIdx] : null;
+
   if (cols.length === 1) {
-    const rates = rateRowsFromOverview(cols[0].row);
-    $("rateTable").innerHTML = `<table><thead><tr><th>指标</th><th class="num">${cols[0].project}</th></tr></thead><tbody>${
-      rates.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")
-    }</tbody></table>`;
+    $("stats").innerHTML = `<div class="kpi-cards">${metricSets[0].map((m) =>
+      `<div class="stat"><div class="k">${m.key}</div><div class="v">${formatKpiValue(m)}</div></div>`
+    ).join("")}</div>`;
     return;
   }
-  const metrics = rateRowsFromOverview(cols[0].row).map(([k]) => k);
-  const head = `<tr><th>指标</th>${cols.map((c) => `<th class="num">${c.project}</th>`).join("")}</tr>`;
-  const body = metrics.map((metric, i) => {
-    const cells = cols.map((c) => `<td class="num">${rateRowsFromOverview(c.row)[i][1]}</td>`).join("");
-    return `<tr><td>${metric}</td>${cells}</tr>`;
+
+  const head = `<tr><th>指标</th>${cols.map((c) => {
+    const tag = c.project === baseline ? "（基准）" : "";
+    return `<th class="num">${c.project}${tag}</th>`;
+  }).join("")}</tr>`;
+
+  const body = metricSets[0].map((m0, i) => {
+    const cells = cols.map((c, ci) => {
+      const m = metricSets[ci][i];
+      const main = formatKpiValue(m);
+      if (!baseMetrics || c.project === baseline) {
+        return `<td class="num">${main}</td>`;
+      }
+      const delta = formatDelta(m, baseMetrics[i]);
+      return `<td class="num">${main}<div class="delta-line">${delta}</div></td>`;
+    }).join("");
+    return `<tr><td>${m0.key}</td>${cells}</tr>`;
   }).join("");
-  $("rateTable").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+
+  $("stats").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderScenarioBars() {
@@ -314,7 +331,6 @@ function renderSources() {
 
 function renderAll() {
   renderKpi();
-  renderRates();
   renderScenarioBars();
   renderScenarioTable();
   renderSources();
@@ -323,6 +339,22 @@ function renderAll() {
 function preferDay0(days) {
   if (days.includes("Day0")) return "Day0";
   return days[0] || "全部";
+}
+
+function syncBaselineOptions() {
+  const el = $("baselineProject");
+  if (!el) return;
+  const meta = (state.data && state.data.meta) || {};
+  const projects = meta.projects || [];
+  const prev = el.value;
+  fillSelect(el, ["无", ...projects], true);
+  if (prev && [...el.options].some((o) => o.value === prev)) {
+    el.value = prev;
+  } else if (projects.length >= 2) {
+    el.value = projects[0];
+  } else {
+    el.value = "无";
+  }
 }
 
 function syncFilters() {
@@ -338,18 +370,14 @@ function syncFilters() {
   const viewOpts = meta.viewTypes && meta.viewTypes.length ? ["全部", ...meta.viewTypes] : ["全部"];
   const defaultDay = preferDay0(days);
 
-  [
-    "cohortDayOverview",
-    "cohortDayRates",
-    "cohortDayScenarioBars",
-    "cohortDayScenarioTable"
-  ].forEach((id) => {
+  ["cohortDayOverview", "cohortDayScenarioBars", "cohortDayScenarioTable"].forEach((id) => {
     fillSelect($(id), dayOpts, true);
     if (!$(id).value || $(id).value === "全部") $(id).value = defaultDay;
   });
   ["viewTypeScenarioBars", "viewTypeScenarioTable"].forEach((id) => {
     fillSelect($(id), viewOpts, true);
   });
+  syncBaselineOptions();
 }
 
 async function loadSheets() {
@@ -388,9 +416,8 @@ function bind() {
   ["project", "country", "brand", "period"].forEach((id) => $(id).addEventListener("change", renderAll));
 
   $("cohortDayOverview").addEventListener("change", renderKpi);
-  $("cohortDayRates").addEventListener("change", renderRates);
+  $("baselineProject").addEventListener("change", renderKpi);
 
-  // 两个场景模块可独立筛选；也可选同步——这里独立，互不影响
   $("cohortDayScenarioBars").addEventListener("change", renderScenarioBars);
   $("viewTypeScenarioBars").addEventListener("change", renderScenarioBars);
   $("cohortDayScenarioTable").addEventListener("change", renderScenarioTable);
@@ -398,6 +425,7 @@ function bind() {
 
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
   if (saved) $("sheetUrls").value = saved;
+  fillSelect($("baselineProject"), ["无"], false);
   renderAll();
 }
 bind();

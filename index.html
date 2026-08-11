@@ -14,7 +14,7 @@
     <header class="hero">
       <div>
         <h1>通知运营看板</h1>
-        <p class="sub">全局「项目代号」选<strong>全部</strong>时，KPI / 总览效率 / 场景会按项目分列对比；选单个项目则只看该项目。模块旁可再筛队列天、查看类型。</p>
+        <p class="sub">项目代号选<strong>全部</strong>可多项目分列；在总览 KPI 选<strong>对比基准</strong>后，其他项目显示相对基准的差值。模块旁可再筛队列天、查看类型。</p>
       </div>
       <div id="statusPill" class="pill">未加载</div>
     </header>
@@ -31,7 +31,7 @@
 
     <section class="panel">
       <h2>2. 全局筛选</h2>
-      <p class="muted tip">多项目对比：项目代号保持「全部」。只看一个项目时再下拉选具体代号。</p>
+      <p class="muted tip">多项目对比：项目代号保持「全部」，并在下方 KPI 选择对比基准项目。</p>
       <div class="filters">
         <label>项目代号<select id="project"></select></label>
         <label>国家<select id="country"></select></label>
@@ -40,34 +40,31 @@
       </div>
     </section>
 
-    <div class="panel-head-row">
-      <h2 class="inline-h2">总览 KPI</h2>
-      <label class="mod-filter">队列天数
-        <select id="cohortDayOverview"></select>
-      </label>
-    </div>
-    <section class="stats" id="stats"></section>
-
-    <section class="grid2">
-      <div class="panel">
-        <div class="panel-head-row">
-          <h2 class="inline-h2">场景点击率（用户）</h2>
-          <div class="mod-filters">
-            <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
-            <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
-          </div>
-        </div>
-        <div id="scenarioBars" class="bars"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-head-row">
-          <h2 class="inline-h2">总览效率</h2>
+    <section class="panel">
+      <div class="panel-head-row">
+        <h2 class="inline-h2">总览 KPI</h2>
+        <div class="mod-filters">
           <label class="mod-filter">队列天数
-            <select id="cohortDayRates"></select>
+            <select id="cohortDayOverview"></select>
+          </label>
+          <label class="mod-filter">对比基准
+            <select id="baselineProject"></select>
           </label>
         </div>
-        <div id="rateTable"></div>
       </div>
+      <div id="stats"></div>
+      <p class="muted tip" id="kpiHint">比率差值单位为百分点（pp）；人数类为相对基准的涨跌幅 %；人均为绝对差值。</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head-row">
+        <h2 class="inline-h2">场景点击率（用户）</h2>
+        <div class="mod-filters">
+          <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
+          <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
+        </div>
+      </div>
+      <div id="scenarioBars" class="bars"></div>
     </section>
 
     <section class="panel">

@@ -67,11 +67,20 @@ textarea {
 .source-list { margin-top: 10px; line-height: 1.5; }
 .source-list .err-text { color: var(--danger); margin-top: 6px; }
 label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 14px; }
-.stats:has(.stat) { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.stats { margin-bottom: 0; }
+.kpi-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+.stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
 .stat .k { color: var(--muted); font-size: 12px; }
-.stat .v { font-family: var(--display); font-size: 28px; margin-top: 4px; }
+.stat .v { font-family: var(--display); font-size: 24px; margin-top: 4px; }
+.delta-line { font-size: 12px; margin-top: 2px; font-weight: 500; }
+.delta.up { color: var(--ok); }
+.delta.down { color: var(--danger); }
+.delta.flat { color: var(--muted); }
+.compare-table th.num { font-weight: 600; color: var(--ink); }
 .grid2 { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; margin-bottom: 14px; }
 .bars { display: grid; gap: 8px; }
 .bar-row { display: grid; grid-template-columns: 110px 1fr 56px; gap: 8px; align-items: center; }
