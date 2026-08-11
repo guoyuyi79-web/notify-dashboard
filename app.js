@@ -552,8 +552,9 @@ function formatDelta(m, baseM) {
   const b = Number(baseM.value) || 0;
   let text = "";
   if (m.kind === "rate") {
-    const pp = (a - b) * 100;
-    text = `${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
+    // 比率差：百分点差值，展示为 %（如 53.8%−44.0%=+9.8%）
+    const d = (a - b) * 100;
+    text = `${d > 0 ? "+" : ""}${d.toFixed(1)}%`;
   } else if (m.kind === "avg") {
     const d = a - b;
     text = `${d > 0 ? "+" : ""}${d.toFixed(2)}`;

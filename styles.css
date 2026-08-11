@@ -90,11 +90,6 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
 .ms-toggle {
   width: 100%;
   text-align: left;
-  background: #fff;
-  color: var(--ink);
-  border: 1px solid var(--line);
-  font-weight: 500;
-  padding: 10px 12px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -105,6 +100,7 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
   float: right;
   color: var(--muted);
   margin-left: 8px;
+  font-weight: 400;
 }
 .ms-toggle[aria-expanded="true"] {
   border-color: var(--accent);
@@ -144,6 +140,24 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
 .url-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 input, select, button { font: inherit; border-radius: 10px; border: 1px solid var(--line); padding: 10px 12px; background: #fff; color: var(--ink); }
 button { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+.filters select,
+.filters .ms-toggle {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.35;
+  height: 42px;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+.filters select {
+  font-weight: 400;
+}
+.filters .ms-toggle {
+  font-weight: 700;
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
 button:disabled { opacity: .55; cursor: not-allowed; }
 .filters { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
 @media (min-width: 900px) {
