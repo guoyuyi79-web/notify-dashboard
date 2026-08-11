@@ -1,320 +1,255 @@
-﻿const state = {
-  catalog: { categories: [], projects: [] },
-  payload: null,
-  projectId: ""
-};
-
+const state = { data: null };
 const $ = (id) => document.getElementById(id);
+const STORAGE_KEY = "notify_sheet_urls";
 
 function toast(msg) {
   const el = $("toast");
   el.textContent = msg;
   el.style.display = "block";
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.style.display = "none"; }, 4200);
+  toast._t = setTimeout(() => { el.style.display = "none"; }, 4500);
 }
-
-function pct(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
-  return (n * 100).toFixed(1) + "%";
-}
-
-function num(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
-  return Math.round(n).toLocaleString("en-US");
-}
-
-function pick(row, keys) {
-  for (const k of keys) {
-    if (row[k] !== undefined && row[k] !== null && row[k] !== "") return row[k];
-  }
-  return "";
-}
-
-async function api(url, options) {
-  const resp = await fetch(url, options);
-  const json = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(json.error || resp.statusText || "request failed");
-  return json;
-}
-
 function setStatus(text, cls) {
   const el = $("statusPill");
   el.className = "pill " + (cls || "");
   el.textContent = text;
 }
-
-function fillSelect(el, items, getValue, getLabel) {
+function pct(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return (n <= 1 ? n * 100 : n).toFixed(1) + "%";
+}
+function num(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return Math.round(n).toLocaleString("en-US");
+}
+function fillSelect(el, values, keep) {
+  const prev = keep ? el.value : "";
   el.innerHTML = "";
-  items.forEach((item) => {
+  values.forEach((v) => {
     const opt = document.createElement("option");
-    opt.value = getValue(item);
-    opt.textContent = getLabel(item);
+    opt.value = v;
+    opt.textContent = v;
     el.appendChild(opt);
   });
+  if (prev && values.includes(prev)) el.value = prev;
 }
-
-function filteredProjects() {
-  const cat = $("category").value;
-  return state.catalog.projects.filter((p) => !cat || cat === "全部" || p.category === cat);
+function parseUrlsFromTextarea() {
+  return String($("sheetUrls").value || "")
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
-
-function renderProjectOptions() {
-  const list = filteredProjects();
-  fillSelect($("project"), list, (p) => p.id, (p) => `${p.name} (${p.id})${p.configured ? "" : " · 未配置"}`);
-  if (list.length) {
-    const exists = list.some((p) => p.id === state.projectId);
-    state.projectId = exists ? state.projectId : list[0].id;
-    $("project").value = state.projectId;
-  }
-  const meta = list.find((p) => p.id === $("project").value);
-  $("projectMeta").textContent = meta
-    ? `品类：${meta.category} · ${meta.configured ? "已配置 SCRIPT_URL" : "请在 Vercel 环境变量配置 PROJECT_" + meta.id.toUpperCase() + "_SCRIPT_URL"}`
-    : "";
+function passFilters(r) {
+  const project = $("project").value;
+  const country = $("country").value;
+  const brand = $("brand").value;
+  const period = $("period").value;
+  const cohortDay = $("cohortDay").value;
+  const viewType = $("viewType").value;
+  const okP = !project || project === "全部" || r["项目代号"] === project;
+  const okC = !country || country === "全部" || r["国家"] === country;
+  const okB = !brand || brand === "全部" || (r["设备品牌"] || "全部") === brand;
+  const okD = !period || r["日期"] === period;
+  const okCohort = !cohortDay || cohortDay === "全部" || !r["队列天数"] || r["队列天数"] === cohortDay;
+  const okView = !viewType || viewType === "全部" || !r["查看类型"] || r["查看类型"] === viewType;
+  return okP && okC && okB && okD && okCohort && okView;
 }
-
-function currentOverviewRows() {
-  const data = state.payload && state.payload.data;
-  if (!data || !Array.isArray(data.overview)) return [];
-  return data.overview;
-}
-
-function currentScenarioRows() {
-  const data = state.payload && state.payload.data;
-  if (!data || !Array.isArray(data.scenario)) return [];
-  return data.scenario;
-}
-
-function unique(values) {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function syncDimensionFilters() {
-  const overview = currentOverviewRows();
-  const countries = unique(overview.map((r) => pick(r, ["国家", "country"])));
-  const periods = unique(overview.map((r) => pick(r, ["日期", "period"])));
-
-  const countryEl = $("country");
-  const periodEl = $("period");
-  const prevC = countryEl.value;
-  const prevP = periodEl.value;
-
-  fillSelect(countryEl, ["全部", ...countries], (x) => x, (x) => x);
-  fillSelect(periodEl, periods, (x) => x, (x) => x);
-
-  if ([...countryEl.options].some((o) => o.value === prevC)) countryEl.value = prevC;
-  if ([...periodEl.options].some((o) => o.value === prevP)) periodEl.value = prevP;
-  if (!periodEl.value && periods[0]) periodEl.value = periods[0];
-}
-
 function selectedOverview() {
-  const country = $("country").value;
-  const period = $("period").value;
-  return currentOverviewRows().filter((r) => {
-    const c = pick(r, ["国家", "country"]);
-    const p = pick(r, ["日期", "period"]);
-    const okC = !country || country === "全部" || c === country;
-    const okP = !period || p === period;
-    return okC && okP;
-  });
+  if (!state.data) return [];
+  return state.data.overview.filter(passFilters);
 }
-
-function selectedScenarios() {
-  const country = $("country").value;
-  const period = $("period").value;
-  return currentScenarioRows().filter((r) => {
-    const c = pick(r, ["国家", "country"]);
-    const p = pick(r, ["日期", "period"]);
-    const okC = !country || country === "全部" || c === country;
-    const okP = !period || p === period;
-    return okC && okP;
-  });
+function selectedScenario() {
+  if (!state.data) return [];
+  return state.data.scenario.filter(passFilters);
 }
-
-function aggregateOverview(rows) {
+function pickOverviewRow(rows) {
   if (!rows.length) return null;
-  if ($("country").value !== "全部") return rows[0];
-
-  // 国家=全部时：若已有「全部」行优先用；否则对绝对数求和，率重算
-  const allRow = rows.find((r) => pick(r, ["国家", "country"]) === "全部");
-  if (allRow) return allRow;
-
+  const country = $("country").value;
+  const brand = $("brand").value;
+  if (country !== "全部" && brand !== "全部") return rows[0];
+  if (country !== "全部" && brand === "全部") {
+    const exact = rows.find((r) => (r["设备品牌"] || "全部") === "全部");
+    if (exact) return exact;
+  }
+  if (country === "全部" && brand !== "全部") {
+    const exact = rows.find((r) => r["国家"] === "全部");
+    if (exact) return exact;
+  }
+  const all = rows.find((r) => r["国家"] === "全部" && (r["设备品牌"] || "全部") === "全部");
+  if (all) return all;
   const sumKeys = ["总活跃用户", "授权数", "发送通知用户数", "发通知总数", "点击用户数", "点击事件数"];
-  const out = { ...rows[0], 国家: "全部" };
+  const out = { ...rows[0], 国家: "全部", 设备品牌: brand === "全部" ? "全部" : brand };
   sumKeys.forEach((k) => { out[k] = 0; });
-  rows.forEach((r) => {
-    sumKeys.forEach((k) => { out[k] += Number(r[k]) || 0; });
-  });
-  const base = Number(out["总活跃用户"]) || 0;
-  const auth = Number(out["授权数"]) || 0;
-  const showUsers = Number(out["发送通知用户数"]) || 0;
-  const showCount = Number(out["发通知总数"]) || 0;
-  const clickUsers = Number(out["点击用户数"]) || 0;
-  const clickCount = Number(out["点击事件数"]) || 0;
+  rows.forEach((r) => sumKeys.forEach((k) => { out[k] += Number(r[k]) || 0; }));
+  const base = out["总活跃用户"] || 0;
+  const auth = out["授权数"] || 0;
+  const showUsers = out["发送通知用户数"] || 0;
+  const showCount = out["发通知总数"] || 0;
+  const clickUsers = out["点击用户数"] || 0;
+  const clickCount = out["点击事件数"] || 0;
   out["授权率"] = base ? auth / base : 0;
   out["通知渗透率"] = auth ? showUsers / auth : 0;
   out["人均通知数"] = auth ? showCount / auth : 0;
   out["点击率-用户"] = showUsers ? clickUsers / showUsers : 0;
   out["点击率-事件"] = showCount ? clickCount / showCount : 0;
   out["人均点击"] = clickUsers ? clickCount / clickUsers : 0;
+  const uninstallKey = Object.keys(rows[0]).find((k) => /卸载率/.test(k));
+  if (uninstallKey) {
+    let removeEst = 0;
+    let baseSum = 0;
+    rows.forEach((r) => {
+      const b = Number(r["总活跃用户"]) || 0;
+      const rate = Number(r[uninstallKey]) || 0;
+      removeEst += b * rate;
+      baseSum += b;
+    });
+    out[uninstallKey] = baseSum ? removeEst / baseSum : 0;
+  }
   return out;
 }
-
-function renderStats() {
-  const row = aggregateOverview(selectedOverview());
-  const box = $("stats");
-  if (!row) {
-    box.innerHTML = '<div class="panel muted">暂无总览数据。请先配置项目并点击「拉取 GA4 并更新」。</div>';
+function renderSources() {
+  const el = $("sourceList");
+  if (!state.data) {
+    el.innerHTML = "";
     return;
   }
-  const items = [
-    ["总活跃用户", num(row["总活跃用户"])],
-    ["授权数", num(row["授权数"])],
-    ["发送通知用户", num(row["发送通知用户数"])],
-    ["点击用户", num(row["点击用户数"])]
-  ];
-  box.innerHTML = items.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  const sources = state.data.sources || [];
+  const errors = state.data.errors || [];
+  const ok = sources.map((s) => `✓ ${s.spreadsheetId.slice(0, 10)}… (${s.overviewRows}/${s.scenarioRows})`).join("　");
+  const bad = errors.map((e) => `✗ ${e.spreadsheetId.slice(0, 10)}… ${e.error}`).join("<br/>");
+  el.innerHTML = [
+    sources.length ? `<div>已加载 ${sources.length} 个表格：${ok}</div>` : "",
+    bad ? `<div class="err-text">${bad}</div>` : ""
+  ].join("");
 }
-
-function renderRates() {
-  const row = aggregateOverview(selectedOverview());
-  const el = $("rateTable");
-  if (!row) { el.innerHTML = '<p class="muted">无数据</p>'; return; }
-  const rows = [
-    ["授权率", pct(row["授权率"])],
-    ["通知渗透率", pct(row["通知渗透率"])],
-    ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
-    ["点击率-用户", pct(row["点击率-用户"])],
-    ["点击率-事件", pct(row["点击率-事件"])],
-    ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
-    ["DAY0卸载率", pct(row["DAY0卸载率"])]
-  ];
-  el.innerHTML = `<table><thead><tr><th>指标</th><th class="num">值</th></tr></thead><tbody>${
-    rows.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")
-  }</tbody></table>`;
-}
-
-function renderScenarios() {
-  const rows = selectedScenarios()
+function render() {
+  const row = pickOverviewRow(selectedOverview());
+  const scenarios = selectedScenario()
     .map((r) => ({
-      name: pick(r, ["通知场景", "scenario"]),
-      showUsers: Number(pick(r, ["通知用户数"])) || 0,
-      showCount: Number(pick(r, ["通知事件数"])) || 0,
-      clickUsers: Number(pick(r, ["点击用户数"])) || 0,
-      clickCount: Number(pick(r, ["点击事件数"])) || 0,
-      ctrUser: Number(pick(r, ["点击率(用户)"])) || 0,
-      ctrEvent: Number(pick(r, ["点击率(事件)"])) || 0,
-      avgClick: Number(pick(r, ["人均点击"])) || 0,
-      avgNotify: Number(String(pick(r, ["人均通知(通知事件数/授权成功用户数)", "人均通知"]) || 0)) || 0
+      name: r["通知场景"] || "",
+      viewType: r["查看类型"] || "",
+      showUsers: Number(r["通知用户数"]) || 0,
+      showCount: Number(r["通知事件数"]) || 0,
+      clickUsers: Number(r["点击用户数"]) || 0,
+      clickCount: Number(r["点击事件数"]) || 0,
+      ctrUser: Number(r["点击率(用户)"]) || 0,
+      ctrEvent: Number(r["点击率(事件)"]) || 0
     }))
-    .filter((r) => r.name)
-    .sort((a, b) => b.ctrUser - a.ctrUser);
+    .filter((r) => r.name);
 
-  const max = Math.max(...rows.map((r) => r.ctrUser), 0.0001);
-  $("scenarioBars").innerHTML = rows.length
-    ? rows.map((r) => {
-        const w = Math.max(4, Math.round((r.ctrUser / max) * 100));
-        return `<div class="bar-row"><div>${r.name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(r.ctrUser)}</div></div>`;
+  const scenarioAgg = {};
+  scenarios.forEach((s) => {
+    const k = (s.viewType || "") + "||" + s.name;
+    if (!scenarioAgg[k]) scenarioAgg[k] = { ...s };
+    else {
+      const t = scenarioAgg[k];
+      t.showUsers += s.showUsers;
+      t.showCount += s.showCount;
+      t.clickUsers += s.clickUsers;
+      t.clickCount += s.clickCount;
+    }
+  });
+  Object.values(scenarioAgg).forEach((s) => {
+    s.ctrUser = s.showUsers ? s.clickUsers / s.showUsers : 0;
+    s.ctrEvent = s.showCount ? s.clickCount / s.showCount : 0;
+  });
+  const scenarioList = Object.values(scenarioAgg).sort((a, b) => b.ctrUser - a.ctrUser);
+
+  if (!row) {
+    $("stats").innerHTML = '<div class="panel muted">暂无数据。请粘贴一个或多个 Sheet 链接并加载。</div>';
+  } else {
+    $("stats").innerHTML = [
+      ["总活跃用户", num(row["总活跃用户"])],
+      ["授权数", num(row["授权数"])],
+      ["发送通知用户", num(row["发送通知用户数"])],
+      ["点击用户", num(row["点击用户数"])]
+    ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  }
+  if (!row) {
+    $("rateTable").innerHTML = '<p class="muted">无数据</p>';
+  } else {
+    const uninstallKey = Object.keys(row).find((k) => /卸载率/.test(k)) || "D0卸载率";
+    const rates = [
+      ["授权率", pct(row["授权率"])],
+      ["通知渗透率", pct(row["通知渗透率"])],
+      ["人均通知数", Number(row["人均通知数"] || 0).toFixed(2)],
+      ["点击率-用户", pct(row["点击率-用户"])],
+      ["点击率-事件", pct(row["点击率-事件"])],
+      ["人均点击", Number(row["人均点击"] || 0).toFixed(2)],
+      [uninstallKey, pct(row[uninstallKey])]
+    ];
+    $("rateTable").innerHTML = `<table><thead><tr><th>指标</th><th class="num">值</th></tr></thead><tbody>${
+      rates.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")
+    }</tbody></table>`;
+  }
+  const max = Math.max(...scenarioList.map((s) => s.ctrUser), 0.0001);
+  $("scenarioBars").innerHTML = scenarioList.length
+    ? scenarioList.map((s) => {
+        const w = Math.max(4, Math.round((s.ctrUser / max) * 100));
+        const label = s.viewType ? `${s.viewType} · ${s.name}` : s.name;
+        return `<div class="bar-row"><div>${label}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(s.ctrUser)}</div></div>`;
       }).join("")
     : '<p class="muted">无场景数据</p>';
-
-  $("scenarioTable").innerHTML = rows.length
-    ? `<table>
-      <thead><tr>
-        <th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
+  $("scenarioTable").innerHTML = scenarioList.length
+    ? `<table><thead><tr>
+        <th>查看类型</th><th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
         <th class="num">点击用户数</th><th class="num">点击事件数</th>
         <th class="num">点击率(用户)</th><th class="num">点击率(事件)</th>
-      </tr></thead>
-      <tbody>${rows.map((r) => `<tr>
-        <td>${r.name}</td><td class="num">${num(r.showUsers)}</td><td class="num">${num(r.showCount)}</td>
-        <td class="num">${num(r.clickUsers)}</td><td class="num">${num(r.clickCount)}</td>
-        <td class="num">${pct(r.ctrUser)}</td><td class="num">${pct(r.ctrEvent)}</td>
+      </tr></thead><tbody>${scenarioList.map((s) => `<tr>
+        <td>${s.viewType || "—"}</td><td>${s.name}</td><td class="num">${num(s.showUsers)}</td><td class="num">${num(s.showCount)}</td>
+        <td class="num">${num(s.clickUsers)}</td><td class="num">${num(s.clickCount)}</td>
+        <td class="num">${pct(s.ctrUser)}</td><td class="num">${pct(s.ctrEvent)}</td>
       </tr>`).join("")}</tbody></table>`
     : '<p class="muted">无场景数据</p>';
+  renderSources();
 }
-
-function renderAll() {
-  syncDimensionFilters();
-  renderStats();
-  renderRates();
-  renderScenarios();
+function syncFilters() {
+  const meta = state.data.meta || {};
+  fillSelect($("project"), ["全部", ...(meta.projects || [])], true);
+  fillSelect($("country"), ["全部", ...(meta.countries || [])], true);
+  fillSelect($("brand"), ["全部", ...(meta.brands || [])], true);
+  fillSelect($("period"), meta.periods || [], true);
+  fillSelect($("cohortDay"), meta.cohortDays && meta.cohortDays.length ? ["全部", ...meta.cohortDays] : ["全部"], true);
+  fillSelect($("viewType"), meta.viewTypes && meta.viewTypes.length ? ["全部", ...meta.viewTypes] : ["全部"], true);
+  if (!$("period").value && meta.periods && meta.periods[0]) $("period").value = meta.periods[0];
 }
-
-async function loadCatalog() {
-  const data = await api("/api/projects");
-  state.catalog = data;
-  const cats = ["全部", ...(data.categories || [])];
-  fillSelect($("category"), cats, (x) => x, (x) => x);
-  renderProjectOptions();
-}
-
-async function loadProjectData() {
-  const id = $("project").value;
-  if (!id) return;
-  state.projectId = id;
+async function loadSheets() {
+  const urls = parseUrlsFromTextarea();
+  if (!urls.length) return toast("请先粘贴至少一个 Google Sheet 链接（每行一个）");
   setStatus("加载中…", "run");
   $("btnLoad").disabled = true;
   try {
-    const json = await api("/api/data?id=" + encodeURIComponent(id));
-    state.payload = json;
-    const st = json.data && json.data.status && json.data.status.state;
-    const stateVal = st && st.value ? st.value : "idle";
-    setStatus(`${id} · ${stateVal}`, stateVal === "error" ? "err" : stateVal === "running" ? "run" : "ok");
-    renderAll();
-  } catch (err) {
-    state.payload = null;
-    setStatus(String(err.message || err), "err");
-    toast(String(err.message || err));
-    renderAll();
-  } finally {
-    $("btnLoad").disabled = false;
-  }
-}
-
-async function pullProject() {
-  const id = $("project").value;
-  if (!id) return;
-  if (!confirm(`确认对项目 ${id} 拉取 GA4？\n会消耗该项目的 GA4 API 配额。`)) return;
-  setStatus("拉取中…", "run");
-  $("btnPull").disabled = true;
-  $("btnLoad").disabled = true;
-  try {
-    const json = await api("/api/pull", {
+    const resp = await fetch("/api/sheet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, sendEmail: false })
+      body: JSON.stringify({ urls })
     });
-    toast(json.ok === false ? (json.error || "拉取失败") : `${id} 拉取完成`);
-    await loadProjectData();
+    const json = await resp.json();
+    if (!resp.ok || json.ok === false) throw new Error(json.error || "加载失败");
+    state.data = json;
+    localStorage.setItem(STORAGE_KEY, urls.join("\n"));
+    syncFilters();
+    render();
+    const n = json.meta.sourceCount || (json.sources || []).length;
+    const errN = (json.errors || []).length;
+    setStatus(`已加载 ${n} 个项目 · ${json.meta.overviewRows}/${json.meta.scenarioRows} 行` + (errN ? ` · ${errN} 失败` : ""), errN ? "warn" : "ok");
+    toast(errN ? `完成：成功 ${n}，失败 ${errN}` : `已加载并清洗 ${n} 个项目表格`);
   } catch (err) {
+    state.data = null;
     setStatus(String(err.message || err), "err");
     toast(String(err.message || err));
+    render();
   } finally {
-    $("btnPull").disabled = false;
     $("btnLoad").disabled = false;
   }
 }
-
 function bind() {
-  $("category").addEventListener("change", () => { renderProjectOptions(); loadProjectData(); });
-  $("project").addEventListener("change", () => loadProjectData());
-  $("country").addEventListener("change", renderAll);
-  $("period").addEventListener("change", renderAll);
-  $("btnLoad").addEventListener("click", loadProjectData);
-  $("btnPull").addEventListener("click", pullProject);
+  $("btnLoad").addEventListener("click", loadSheets);
+  ["project", "country", "brand", "period", "cohortDay", "viewType"].forEach((id) => $(id).addEventListener("change", render));
+  const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
+  if (saved) $("sheetUrls").value = saved;
+  render();
 }
-
-async function main() {
-  bind();
-  try {
-    await loadCatalog();
-    await loadProjectData();
-  } catch (err) {
-    setStatus(String(err.message || err), "err");
-    toast(String(err.message || err));
-  }
-}
-
-main();
+bind();
