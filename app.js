@@ -228,6 +228,101 @@ function buildScenarioList(rows, splitByProject) {
     });
 }
 
+/** 按「查看类型 + 通知场景」同名对齐，跨项目对比 */
+function buildScenarioMatrix(rows) {
+  const flat = buildScenarioList(rows, true);
+  const map = {};
+  flat.forEach((s) => {
+    const key = `${s.viewType || ""}||${s.name}`;
+    if (!map[key]) map[key] = { key, viewType: s.viewType || "", name: s.name, byProject: {} };
+    map[key].byProject[s.project || ""] = s;
+  });
+  const projects = orderProjects([
+    ...new Set(flat.map((s) => s.project).filter(Boolean))
+  ]);
+  const baseline = ($("baselineProject") && $("baselineProject").value) || "无";
+  const rowsOut = Object.values(map).sort((a, b) => {
+    const base = baseline && baseline !== "无" ? baseline : projects[0];
+    const ca = base && a.byProject[base] ? a.byProject[base].ctrUser : Math.max(0, ...projects.map((p) => (a.byProject[p] && a.byProject[p].ctrUser) || 0));
+    const cb = base && b.byProject[base] ? b.byProject[base].ctrUser : Math.max(0, ...projects.map((p) => (b.byProject[p] && b.byProject[p].ctrUser) || 0));
+    return cb - ca;
+  });
+  return { projects, rows: rowsOut, baseline };
+}
+
+function orderProjects(projects) {
+  const baseline = ($("baselineProject") && $("baselineProject").value) || "无";
+  const list = [...projects].sort((a, b) => String(a).localeCompare(String(b), "zh"));
+  if (!baseline || baseline === "无") return list;
+  return list.sort((a, b) => {
+    if (a === baseline) return -1;
+    if (b === baseline) return 1;
+    return String(a).localeCompare(String(b), "zh");
+  });
+}
+
+function emptyScenarioStats() {
+  return { showUsers: 0, showCount: 0, clickUsers: 0, clickCount: 0, ctrUser: 0, ctrEvent: 0 };
+}
+
+function renderScenarioCompareCtr(matrix) {
+  const { projects, rows, baseline } = matrix;
+  if (!rows.length) return '<p class="muted">当前模块筛选下无场景点击率</p>';
+  const head = `<tr><th>查看类型</th><th>通知场景</th>${projects.map((p) => {
+    const tag = p === baseline ? "（基准）" : "";
+    return `<th class="num">${p}${tag}</th>`;
+  }).join("")}</tr>`;
+  const body = rows.map((row) => {
+    const baseS = baseline && baseline !== "无" ? row.byProject[baseline] : null;
+    const cells = projects.map((p) => {
+      const s = row.byProject[p];
+      if (!s) return `<td class="num muted">—</td>`;
+      const main = pct(s.ctrUser);
+      if (!baseS || p === baseline) return `<td class="num">${main}</td>`;
+      const delta = formatDelta(
+        { kind: "rate", value: s.ctrUser },
+        { kind: "rate", value: baseS.ctrUser }
+      );
+      return `<td class="num">${main}<div class="delta-line">${delta}</div></td>`;
+    }).join("");
+    return `<tr><td>${row.viewType || "—"}</td><td>${row.name}</td>${cells}</tr>`;
+  }).join("");
+  return `<div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderScenarioCompareDetail(matrix) {
+  const { projects, rows, baseline } = matrix;
+  if (!rows.length) return '<p class="muted">当前模块筛选下无场景明细</p>';
+  const metricDefs = [
+    { key: "通知用户数", kind: "abs", get: (s) => s.showUsers },
+    { key: "通知事件数", kind: "abs", get: (s) => s.showCount },
+    { key: "点击用户数", kind: "abs", get: (s) => s.clickUsers },
+    { key: "点击事件数", kind: "abs", get: (s) => s.clickCount },
+    { key: "点击率(用户)", kind: "rate", get: (s) => s.ctrUser },
+    { key: "点击率(事件)", kind: "rate", get: (s) => s.ctrEvent }
+  ];
+  const head = `<tr><th>查看类型</th><th>通知场景</th><th>指标</th>${projects.map((p) => {
+    const tag = p === baseline ? "（基准）" : "";
+    return `<th class="num">${p}${tag}</th>`;
+  }).join("")}</tr>`;
+  const body = rows.map((row) => metricDefs.map((md, mi) => {
+    const baseS = baseline && baseline !== "无" ? (row.byProject[baseline] || emptyScenarioStats()) : null;
+    const cells = projects.map((p) => {
+      const s = row.byProject[p];
+      if (!s) return `<td class="num muted">—</td>`;
+      const m = { kind: md.kind, value: md.get(s) };
+      const main = formatKpiValue(m);
+      if (!baseS || p === baseline || !row.byProject[baseline]) return `<td class="num">${main}</td>`;
+      const delta = formatDelta(m, { kind: md.kind, value: md.get(baseS) });
+      return `<td class="num">${main}<div class="delta-line">${delta}</div></td>`;
+    }).join("");
+    const typeCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.viewType || "—"}</td>` : "";
+    const nameCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.name}</td>` : "";
+    return `<tr>${typeCell}${nameCell}<td>${md.key}</td>${cells}</tr>`;
+  }).join("")).join("");
+  return `<div class="table-wrap"><table class="compare-table scenario-detail-compare"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
 function renderKpi() {
   const day = $("cohortDayOverview").value;
   let cols = overviewByProject(day);
@@ -237,13 +332,7 @@ function renderKpi() {
   }
 
   const baseline = ($("baselineProject") && $("baselineProject").value) || "无";
-  if (baseline && baseline !== "无") {
-    cols = [...cols].sort((a, b) => {
-      if (a.project === baseline) return -1;
-      if (b.project === baseline) return 1;
-      return String(a.project).localeCompare(String(b.project), "zh");
-    });
-  }
+  cols = orderProjects(cols.map((c) => c.project)).map((p) => cols.find((c) => c.project === p)).filter(Boolean);
 
   const metricSets = cols.map((c) => kpiMetricsFromOverview(c.row));
   const baseIdx = baseline && baseline !== "无"
@@ -282,15 +371,23 @@ function renderKpi() {
 function renderScenarioBars() {
   const day = $("cohortDayScenarioBars").value;
   const viewType = $("viewTypeScenarioBars").value;
-  const split = !$("project").value || $("project").value === "全部";
-  const list = buildScenarioList(scenariosForLocal(day, viewType), split);
+  const rows = scenariosForLocal(day, viewType);
+  const multi = !$("project").value || $("project").value === "全部";
+  const projects = [...new Set(rows.map((r) => r["项目代号"]).filter(Boolean))];
+
+  if (multi && projects.length > 1) {
+    $("scenarioBars").innerHTML = renderScenarioCompareCtr(buildScenarioMatrix(rows));
+    return;
+  }
+
+  const list = buildScenarioList(rows, false);
   const max = Math.max(...list.map((s) => s.ctrUser), 0.0001);
   $("scenarioBars").innerHTML = list.length
     ? list.map((s) => {
         const w = Math.max(4, Math.round((s.ctrUser / max) * 100));
-        const parts = [s.project, s.viewType, s.name].filter(Boolean);
+        const parts = [s.viewType, s.name].filter(Boolean);
         const name = parts.join(" · ");
-        return `<div class="bar-row ${split ? "bar-row-wide" : ""}"><div title="${name}">${name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(s.ctrUser)}</div></div>`;
+        return `<div class="bar-row bar-row-wide"><div title="${name}">${name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="num">${pct(s.ctrUser)}</div></div>`;
       }).join("")
     : '<p class="muted">当前模块筛选下无场景点击率</p>';
 }
@@ -298,15 +395,23 @@ function renderScenarioBars() {
 function renderScenarioTable() {
   const day = $("cohortDayScenarioTable").value;
   const viewType = $("viewTypeScenarioTable").value;
-  const split = !$("project").value || $("project").value === "全部";
-  const list = buildScenarioList(scenariosForLocal(day, viewType), split);
+  const rows = scenariosForLocal(day, viewType);
+  const multi = !$("project").value || $("project").value === "全部";
+  const projects = [...new Set(rows.map((r) => r["项目代号"]).filter(Boolean))];
+
+  if (multi && projects.length > 1) {
+    $("scenarioTable").innerHTML = renderScenarioCompareDetail(buildScenarioMatrix(rows));
+    return;
+  }
+
+  const list = buildScenarioList(rows, false);
   $("scenarioTable").innerHTML = list.length
     ? `<table><thead><tr>
-        <th>项目代号</th><th>查看类型</th><th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
+        <th>查看类型</th><th>通知场景</th><th class="num">通知用户数</th><th class="num">通知事件数</th>
         <th class="num">点击用户数</th><th class="num">点击事件数</th>
         <th class="num">点击率(用户)</th><th class="num">点击率(事件)</th>
       </tr></thead><tbody>${list.map((s) => `<tr>
-        <td>${s.project || "—"}</td><td>${s.viewType || "—"}</td><td>${s.name}</td><td class="num">${num(s.showUsers)}</td><td class="num">${num(s.showCount)}</td>
+        <td>${s.viewType || "—"}</td><td>${s.name}</td><td class="num">${num(s.showUsers)}</td><td class="num">${num(s.showCount)}</td>
         <td class="num">${num(s.clickUsers)}</td><td class="num">${num(s.clickCount)}</td>
         <td class="num">${pct(s.ctrUser)}</td><td class="num">${pct(s.ctrEvent)}</td>
       </tr>`).join("")}</tbody></table>`
@@ -413,10 +518,9 @@ async function loadSheets() {
 
 function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
-  ["project", "country", "brand", "period"].forEach((id) => $(id).addEventListener("change", renderAll));
+  ["project", "country", "brand", "period", "baselineProject"].forEach((id) => $(id).addEventListener("change", renderAll));
 
   $("cohortDayOverview").addEventListener("change", renderKpi);
-  $("baselineProject").addEventListener("change", renderKpi);
 
   $("cohortDayScenarioBars").addEventListener("change", renderScenarioBars);
   $("viewTypeScenarioBars").addEventListener("change", renderScenarioBars);
