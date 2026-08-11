@@ -7,14 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260811k" />
+  <link rel="stylesheet" href="/styles.css?v=20260811m" />
 </head>
 <body>
   <div class="wrap">
     <header class="hero">
       <div>
         <h1>通知运营看板</h1>
-        <p class="sub">全局筛选决定当前切片；KPI 表会展示国家/品牌/版本等维度内容。率与人均指标支持进度条对比可视化。</p>
+        <p class="sub">全局筛选支持多选并吸顶固定。率/人均与场景点击率均支持进度条对比；KPI 展示国家/品牌/版本/时间周期。</p>
       </div>
       <div id="statusPill" class="pill">未加载</div>
     </header>
@@ -25,25 +25,25 @@
       <div class="url-row actions">
         <button id="btnLoad" type="button">加载并清洗全部</button>
       </div>
-      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。</p>
+      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。Ctrl/⌘+点击可多选筛选。</p>
       <div id="sourceList" class="source-list muted"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel filters-sticky" id="globalFilterPanel">
       <h2>2. 全局筛选与对比</h2>
-      <p class="muted tip">对比维度=项目：多 Sheet 项目列对比。=版本 / 日期区间：同项目下做版本或时间对比（展开时该维自动取「全部」）。</p>
-      <div class="filters">
+      <p class="muted tip">项目/版本/国家/品牌/日期均支持<strong>多选</strong>（含「全部」）。对比维度决定分列方式；对比基准用于差值与进度条蓝条。</p>
+      <div class="filters filters-multi">
         <label>对比维度<select id="compareBy">
           <option value="project">项目</option>
           <option value="version">版本</option>
           <option value="period">日期区间</option>
         </select></label>
         <label>对比基准<select id="baseline"></select></label>
-        <label>项目代号<select id="project"></select></label>
-        <label>版本<select id="version"></select></label>
-        <label>国家<select id="country"></select></label>
-        <label>设备品牌<select id="brand"></select></label>
-        <label>日期区间<select id="period"></select></label>
+        <label>项目代号<select id="project" multiple size="4"></select></label>
+        <label>版本<select id="version" multiple size="4"></select></label>
+        <label>国家<select id="country" multiple size="4"></select></label>
+        <label>设备品牌<select id="brand" multiple size="4"></select></label>
+        <label>日期区间<select id="period" multiple size="4"></select></label>
       </div>
     </section>
 
@@ -56,7 +56,7 @@
       </div>
       <div id="dimContextOverview" class="dim-context muted"></div>
       <div id="stats"></div>
-      <p class="muted tip">含 Day0–Dn 留存（DayN activeUsers / Day0 first_open）。比率差值为 pp，人数为涨跌幅 %。</p>
+      <p class="muted tip">不含 Day0 留存行。比率差值为 pp，人数为涨跌幅 %。</p>
     </section>
 
     <section class="panel">
@@ -66,9 +66,10 @@
           <label class="mod-filter">对比项<select id="barFocus"></select></label>
         </div>
       </div>
+      <div id="dimContextRateBars" class="dim-context muted"></div>
       <div id="rateAvgLegend" class="cmp-legend"></div>
       <div id="rateAvgBars" class="cmp-bars"></div>
-      <p class="muted tip">仅展示比率与人均类指标。橙色=对比项，蓝色=基准（未设基准时取首列）。</p>
+      <p class="muted tip">仅比率与人均。橙=对比项，蓝=基准。对比项可选任一列（含两个项目）。</p>
     </section>
 
     <section class="panel">
@@ -77,11 +78,13 @@
         <div class="mod-filters">
           <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
           <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
+          <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
         </div>
       </div>
       <div id="dimContextBars" class="dim-context muted"></div>
-      <div id="scenarioBars" class="bars"></div>
-      <p class="muted tip">多项目时按「查看类型 + 通知场景」同名对齐。</p>
+      <div id="sceneCtrLegend" class="cmp-legend"></div>
+      <div id="scenarioBars" class="cmp-bars"></div>
+      <p class="muted tip">按「查看类型 + 通知场景」对齐；进度条随对比维度（项目/版本/日期）分列。</p>
     </section>
 
     <section class="panel">
@@ -94,10 +97,10 @@
       </div>
       <div id="dimContextTable" class="dim-context muted"></div>
       <div id="scenarioTable" class="table-wrap"></div>
-      <p class="muted tip">人均通知 = 场景通知事件数 / Day0 first_open（与总览同分母）。</p>
+      <p class="muted tip">对比差值单独成列。人均通知 = 场景通知事件数 / Day0 first_open。</p>
     </section>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260811k"></script>
+  <script src="/app.js?v=20260811m"></script>
 </body>
 </html>

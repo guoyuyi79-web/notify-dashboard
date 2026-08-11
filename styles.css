@@ -51,6 +51,29 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
   font-size: 12px;
   line-height: 1.5;
 }
+.dim-context .dim-tag {
+  font-weight: 600;
+  margin-right: 4px;
+}
+.dim-context .dim-tag.focus { color: #c56a22; }
+.dim-context .dim-tag.base { color: #3d5f86; }
+.filters-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  box-shadow: 0 8px 24px rgba(40, 30, 16, 0.08);
+  border-color: #d2c6b4;
+  background: rgba(255, 253, 248, 0.97);
+  backdrop-filter: blur(8px);
+}
+.filters-multi select[multiple] {
+  min-height: 88px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.filters-multi label {
+  align-content: start;
+}
 .url-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 input, select, button { font: inherit; border-radius: 10px; border: 1px solid var(--line); padding: 10px 12px; background: #fff; color: var(--ink); }
 button { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
@@ -60,7 +83,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .filters { grid-template-columns: repeat(4, minmax(0,1fr)); }
 }
 @media (min-width: 1200px) {
-  .filters { grid-template-columns: repeat(7, minmax(0,1fr)); }
+  .filters { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .filters-multi { grid-template-columns: repeat(7, minmax(0,1fr)); }
 }
 textarea {
   width: 100%;
