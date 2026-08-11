@@ -116,19 +116,26 @@ function cleanOverview(rows) {
     numKeys.forEach((k) => {
       if (o[k] !== undefined && o[k] !== '') o[k] = Number(String(o[k]).replace(/,/g, '')) || 0;
     });
-    const rateKeys = ['授权率', '通知渗透率', '点击率-用户', '点击率-事件'];
+    const parseRate = (raw) => {
+      if (raw === undefined || raw === null || raw === '') return undefined;
+      const s = String(raw).trim().replace(/,/g, '');
+      if (!s) return undefined;
+      if (s.endsWith('%')) {
+        const n = Number(s.slice(0, -1));
+        return Number.isFinite(n) ? n / 100 : 0;
+      }
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const rateKeys = ['留存率', '授权率', '通知渗透率', '点击率-用户', '点击率-事件'];
     rateKeys.forEach((k) => {
-      if (o[k] === undefined || o[k] === '') return;
-      const s = String(o[k]).trim();
-      if (s.endsWith('%')) o[k] = Number(s.replace('%', '')) / 100;
-      else o[k] = Number(s) || 0;
+      const n = parseRate(o[k]);
+      if (n !== undefined) o[k] = n;
     });
     Object.keys(o).forEach((k) => {
       if (!/卸载率/.test(k)) return;
-      if (o[k] === undefined || o[k] === '') return;
-      const s = String(o[k]).trim();
-      if (s.endsWith('%')) o[k] = Number(s.replace('%', '')) / 100;
-      else o[k] = Number(s) || 0;
+      const n = parseRate(o[k]);
+      if (n !== undefined) o[k] = n;
     });
     ['人均通知数', '人均点击'].forEach((k) => {
       if (o[k] !== undefined && o[k] !== '') o[k] = Number(o[k]) || 0;
@@ -222,11 +229,26 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    const isAllLabel = (v) => {
+      const s = String(v || '').trim();
+      return !s || s === '全部' || s === '__ALL__' || s.toLowerCase() === 'all';
+    };
     const projects = [...new Set(overview.map((r) => r['项目代号']).filter(Boolean))];
-    const countries = [...new Set(overview.map((r) => r['国家']).filter(Boolean))];
-    const brands = [...new Set(overview.map((r) => r['设备品牌'] || '全部').filter(Boolean))];
+    const countries = [...new Set(overview.map((r) => String(r['国家'] || '').trim()).filter((v) => !isAllLabel(v)))];
+    const brands = [...new Set(overview.map((r) => String(r['设备品牌'] || '').trim()).filter((v) => !isAllLabel(v)))];
+    const versions = [...new Set(overview.map((r) => String(r['版本'] || '').trim()).filter((v) => !isAllLabel(v)))];
     const periods = [...new Set(overview.map((r) => r['日期']).filter(Boolean))];
-    const cohortDays = [...new Set(overview.map((r) => r['队列天数']).filter(Boolean))];
+    const cohortDayRaw = []
+      .concat(overview.map((r) => r['队列天数']))
+      .concat(scenario.map((r) => r['队列天数']))
+      .map((v) => (v === undefined || v === null ? '' : String(v).trim()))
+      .filter((v) => v !== '');
+    const cohortDays = [...new Set(cohortDayRaw)].sort((a, b) => {
+      const na = Number(String(a).replace(/^Day/i, '').replace(/^D/i, ''));
+      const nb = Number(String(b).replace(/^Day/i, '').replace(/^D/i, ''));
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return String(a).localeCompare(String(b), 'zh');
+    });
     const viewTypes = [...new Set(scenario.map((r) => r['查看类型']).filter(Boolean))];
 
     return res.status(200).json({
@@ -238,6 +260,7 @@ module.exports = async function handler(req, res) {
         projects,
         countries,
         brands,
+        versions,
         periods,
         cohortDays,
         viewTypes,
