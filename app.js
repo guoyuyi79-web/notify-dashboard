@@ -81,15 +81,51 @@ function fillSelect(el, values, keep) {
   if (prev && ok) el.value = prev;
 }
 
-/** 多选：保留先前选中；默认选「全部」 */
-function fillMultiSelect(el, values, keep) {
-  if (!el) return;
-  const prev = keep
-    ? [...el.selectedOptions].map((o) => o.value)
-    : [];
-  el.innerHTML = "";
+/** 勾选多选状态：id -> Set of values；含 ALL 表示「全部」 */
+const multiState = {
+  project: new Set([ALL]),
+  version: new Set([ALL]),
+  country: new Set([ALL]),
+  brand: new Set([ALL]),
+  period: new Set([ALL])
+};
+
+function msToggleId(id) { return id + "Toggle"; }
+function msPanelId(id) { return id + "Panel"; }
+
+function formatMsSummary(id) {
+  const set = multiState[id] || new Set([ALL]);
+  const vals = [...set];
+  if (!vals.length || vals.some(isAllToken)) return "全部";
+  if (vals.length === 1) return vals[0];
+  if (vals.length === 2) return vals.join("、");
+  return `${vals[0]}、${vals[1]} 等${vals.length}项`;
+}
+
+function updateMsToggleLabel(id) {
+  const btn = $(msToggleId(id));
+  if (btn) btn.textContent = formatMsSummary(id);
+}
+
+function closeAllMsPanels(exceptId) {
+  ["project", "version", "country", "brand", "period"].forEach((id) => {
+    if (exceptId && id === exceptId) return;
+    const panel = $(msPanelId(id));
+    const btn = $(msToggleId(id));
+    if (panel) panel.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  });
+}
+
+function fillMultiSelect(id, values, keep) {
+  const panel = $(msPanelId(id));
+  const btn = $(msToggleId(id));
+  if (!panel || !btn) return;
+
+  const prev = keep ? new Set(multiState[id] || []) : new Set([ALL]);
+  const opts = [];
   const seen = new Set();
-  values.forEach((item) => {
+  (values || []).forEach((item) => {
     let value;
     let label;
     if (item && typeof item === "object") {
@@ -107,29 +143,94 @@ function fillMultiSelect(el, values, keep) {
     }
     if (seen.has(value)) return;
     seen.add(value);
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = label;
-    el.appendChild(opt);
+    opts.push({ value, label });
   });
-  if (prev.length) {
-    let any = false;
-    [...el.options].forEach((o) => {
-      o.selected = prev.includes(o.value);
-      if (o.selected) any = true;
-    });
-    if (!any && el.options.length) el.options[0].selected = true;
-  } else if (el.options.length) {
-    el.options[0].selected = true;
+  if (!opts.some((o) => o.value === ALL)) {
+    opts.unshift({ value: ALL, label: "全部" });
   }
+
+  // 恢复选中：若旧值都不在新选项里，回退全部
+  const validPrev = [...prev].filter((v) => opts.some((o) => o.value === v));
+  if (!validPrev.length) {
+    multiState[id] = new Set([ALL]);
+  } else if (validPrev.some(isAllToken)) {
+    multiState[id] = new Set([ALL]);
+  } else {
+    multiState[id] = new Set(validPrev);
+  }
+
+  panel.innerHTML = opts.map((o) => {
+    const checked = multiState[id].has(o.value) ? "checked" : "";
+    return `<label class="ms-option"><input type="checkbox" data-ms-id="${id}" value="${o.value.replace(/"/g, "&quot;")}" ${checked} /><span>${o.label}</span></label>`;
+  }).join("");
+
+  panel.querySelectorAll("input[type=checkbox]").forEach((input) => {
+    input.addEventListener("change", () => onMsCheckboxChange(id, input));
+  });
+  updateMsToggleLabel(id);
+}
+
+function onMsCheckboxChange(id, input) {
+  const panel = $(msPanelId(id));
+  const val = input.value;
+
+  if (isAllToken(val)) {
+    if (input.checked) {
+      multiState[id] = new Set([ALL]);
+      panel.querySelectorAll("input[type=checkbox]").forEach((el) => {
+        el.checked = isAllToken(el.value);
+      });
+    } else {
+      // 不允许空选，至少保留全部
+      input.checked = true;
+      multiState[id] = new Set([ALL]);
+    }
+  } else if (input.checked) {
+    const next = new Set([...(multiState[id] || [])].filter((v) => !isAllToken(v)));
+    next.add(val);
+    multiState[id] = next;
+    const allBox = panel.querySelector(`input[value="${ALL}"]`);
+    if (allBox) allBox.checked = false;
+  } else {
+    const next = new Set([...(multiState[id] || [])].filter((v) => v !== val && !isAllToken(v)));
+    if (!next.size) {
+      multiState[id] = new Set([ALL]);
+      const allBox = panel.querySelector(`input[value="${ALL}"]`);
+      if (allBox) allBox.checked = true;
+    } else {
+      multiState[id] = next;
+    }
+  }
+  updateMsToggleLabel(id);
+  syncBaselineOptions();
+  renderAll();
 }
 
 function readMulti(id) {
-  const el = $(id);
-  if (!el) return ["全部"];
-  const vals = [...el.selectedOptions].map((o) => o.value);
-  if (!vals.length || vals.some((v) => isAllToken(v))) return ["全部"];
+  const set = multiState[id];
+  if (!set || !set.size) return ["全部"];
+  const vals = [...set];
+  if (vals.some(isAllToken)) return ["全部"];
   return vals;
+}
+
+function bindMultiSelectUI() {
+  ["project", "version", "country", "brand", "period"].forEach((id) => {
+    const btn = $(msToggleId(id));
+    const panel = $(msPanelId(id));
+    if (!btn || !panel) return;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = panel.hidden;
+      closeAllMsPanels(id);
+      panel.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target.closest && e.target.closest(".ms-field")) return;
+    closeAllMsPanels();
+  });
 }
 
 function formatMultiLabel(arr) {
@@ -1001,13 +1102,11 @@ function optionList(values, withAll) {
 
 function syncFilters() {
   const meta = state.data.meta || {};
-  fillMultiSelect($("project"), optionList(meta.projects), true);
-  fillMultiSelect($("version"), optionList(meta.versions), true);
-  fillMultiSelect($("country"), optionList(meta.countries), true);
-  fillMultiSelect($("brand"), optionList(meta.brands), true);
-  fillMultiSelect($("period"), optionList(meta.periods, false).length
-    ? optionList(meta.periods, true)
-    : [{ value: ALL, label: "全部" }], true);
+  fillMultiSelect("project", optionList(meta.projects), true);
+  fillMultiSelect("version", optionList(meta.versions), true);
+  fillMultiSelect("country", optionList(meta.countries), true);
+  fillMultiSelect("brand", optionList(meta.brands), true);
+  fillMultiSelect("period", optionList(meta.periods, true), true);
 
   const days = meta.cohortDays || [];
   const dayOpts = days.length
@@ -1072,21 +1171,13 @@ async function loadSheets() {
 
 function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
+  bindMultiSelectUI();
 
   ["compareBy", "baseline"].forEach((id) => {
     const el = $(id);
     if (!el) return;
     el.addEventListener("change", () => {
       if (id === "compareBy") syncBaselineOptions();
-      renderAll();
-    });
-  });
-
-  ["project", "version", "country", "brand", "period"].forEach((id) => {
-    const el = $(id);
-    if (!el) return;
-    el.addEventListener("change", () => {
-      syncBaselineOptions();
       renderAll();
     });
   });
@@ -1101,11 +1192,11 @@ function bind() {
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
   if (saved) $("sheetUrls").value = saved;
   fillSelect($("baseline"), [{ value: NONE, label: "无对比" }], false);
-  fillMultiSelect($("project"), [{ value: ALL, label: "全部" }], false);
-  fillMultiSelect($("version"), [{ value: ALL, label: "全部" }], false);
-  fillMultiSelect($("country"), [{ value: ALL, label: "全部" }], false);
-  fillMultiSelect($("brand"), [{ value: ALL, label: "全部" }], false);
-  fillMultiSelect($("period"), [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("project", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("version", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("country", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("brand", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("period", [{ value: ALL, label: "全部" }], false);
   renderAll();
 }
 bind();

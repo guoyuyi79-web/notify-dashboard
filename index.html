@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260811m" />
+  <link rel="stylesheet" href="/styles.css?v=20260811n" />
 </head>
 <body>
   <div class="wrap">
@@ -25,13 +25,13 @@
       <div class="url-row actions">
         <button id="btnLoad" type="button">加载并清洗全部</button>
       </div>
-      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。Ctrl/⌘+点击可多选筛选。</p>
+      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。</p>
       <div id="sourceList" class="source-list muted"></div>
     </section>
 
     <section class="panel filters-sticky" id="globalFilterPanel">
       <h2>2. 全局筛选与对比</h2>
-      <p class="muted tip">项目/版本/国家/品牌/日期均支持<strong>多选</strong>（含「全部」）。对比维度决定分列方式；对比基准用于差值与进度条蓝条。</p>
+      <p class="muted tip">项目/版本/国家/品牌/日期均支持<strong>勾选多选</strong>（点选即可，不必按 Ctrl）。选具体项会取消「全部」；选「全部」会清空其他项。</p>
       <div class="filters filters-multi">
         <label>对比维度<select id="compareBy">
           <option value="project">项目</option>
@@ -39,11 +39,31 @@
           <option value="period">日期区间</option>
         </select></label>
         <label>对比基准<select id="baseline"></select></label>
-        <label>项目代号<select id="project" multiple size="4"></select></label>
-        <label>版本<select id="version" multiple size="4"></select></label>
-        <label>国家<select id="country" multiple size="4"></select></label>
-        <label>设备品牌<select id="brand" multiple size="4"></select></label>
-        <label>日期区间<select id="period" multiple size="4"></select></label>
+        <div class="ms-field" data-ms="project">
+          <span class="ms-label">项目代号</span>
+          <button type="button" class="ms-toggle" id="projectToggle" aria-expanded="false">全部</button>
+          <div class="ms-panel" id="projectPanel" hidden></div>
+        </div>
+        <div class="ms-field" data-ms="version">
+          <span class="ms-label">版本</span>
+          <button type="button" class="ms-toggle" id="versionToggle" aria-expanded="false">全部</button>
+          <div class="ms-panel" id="versionPanel" hidden></div>
+        </div>
+        <div class="ms-field" data-ms="country">
+          <span class="ms-label">国家</span>
+          <button type="button" class="ms-toggle" id="countryToggle" aria-expanded="false">全部</button>
+          <div class="ms-panel" id="countryPanel" hidden></div>
+        </div>
+        <div class="ms-field" data-ms="brand">
+          <span class="ms-label">设备品牌</span>
+          <button type="button" class="ms-toggle" id="brandToggle" aria-expanded="false">全部</button>
+          <div class="ms-panel" id="brandPanel" hidden></div>
+        </div>
+        <div class="ms-field" data-ms="period">
+          <span class="ms-label">日期区间</span>
+          <button type="button" class="ms-toggle" id="periodToggle" aria-expanded="false">全部</button>
+          <div class="ms-panel" id="periodPanel" hidden></div>
+        </div>
       </div>
     </section>
 
@@ -101,6 +121,6 @@
     </section>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260811m"></script>
+  <script src="/app.js?v=20260811n"></script>
 </body>
 </html>
