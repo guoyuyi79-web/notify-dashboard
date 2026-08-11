@@ -313,23 +313,39 @@ function passViewType(r, viewType) {
   return String(r["查看类型"] || "") === viewType;
 }
 
+/** 选「全部」时优先用汇总行，但按项目分别处理，避免 A 有汇总、B 无汇总时把 B 整表滤掉 */
 function preferSummaryRows(rows, g) {
   let out = rows || [];
+  if (!out.length) return out;
+
   const countries = g.countries || (g.country ? [g.country] : ["全部"]);
   const brands = g.brands || (g.brand ? [g.brand] : ["全部"]);
   const versions = g.versions || (g.version ? [g.version] : ["全部"]);
-  if (countries.some(isAllToken) || countries.includes("全部")) {
-    const allC = out.filter((r) => r["国家"] === "全部");
-    if (allC.length) out = allC;
-  }
-  if (brands.some(isAllToken) || brands.includes("全部")) {
-    const allB = out.filter((r) => (r["设备品牌"] || "全部") === "全部");
-    if (allB.length) out = allB;
-  }
-  if (versions.some(isAllToken) || versions.includes("全部")) {
-    const allV = out.filter((r) => (r["版本"] || "全部") === "全部");
-    if (allV.length) out = allV;
-  }
+  const countryAll = countries.some(isAllToken) || countries.includes("全部");
+  const brandAll = brands.some(isAllToken) || brands.includes("全部");
+  const versionAll = versions.some(isAllToken) || versions.includes("全部");
+
+  const groupKey = (r) => String(r["项目代号"] || "") + "\u0001" + String(r["日期"] || "");
+  const byGroup = {};
+  out.forEach((r) => {
+    const k = groupKey(r);
+    if (!byGroup[k]) byGroup[k] = [];
+    byGroup[k].push(r);
+  });
+
+  const preferDim = (list, getVal, wantAll) => {
+    if (!wantAll) return list;
+    const summary = list.filter((r) => getVal(r) === "全部");
+    return summary.length ? summary : list;
+  };
+
+  out = Object.keys(byGroup).flatMap((k) => {
+    let list = byGroup[k];
+    list = preferDim(list, (r) => r["国家"] || "", countryAll);
+    list = preferDim(list, (r) => r["设备品牌"] || "全部", brandAll);
+    list = preferDim(list, (r) => r["版本"] || "全部", versionAll);
+    return list;
+  });
   return out;
 }
 
@@ -799,6 +815,7 @@ function metricUnitLabel(m) {
 }
 
 function formatBarNumber(m) {
+  if (m && m.missing) return "—";
   if (m.kind === "rate") {
     const n = Number(m.value);
     if (!Number.isFinite(n)) return "—";
@@ -867,13 +884,13 @@ function renderCmpBarPair(fm, bm) {
   if (fm.kind === "avg") {
     maxAbs = Math.max(Math.abs(Number(fm.value) || 0), bm ? Math.abs(Number(bm.value) || 0) : 0, 0.0001);
   }
-  const wFocus = barWidthPct(fm, maxAbs);
-  const focusZero = !(Number(fm.value) > 0);
+  const wFocus = fm.missing ? 48 : barWidthPct(fm, maxAbs);
+  const focusZero = fm.missing || !(Number(fm.value) > 0);
   const focusBar = `<div class="cmp-bar focus${focusZero ? " is-zero" : ""}" style="width:${Math.max(focusZero ? 48 : 8, wFocus)}%">${formatBarNumber(fm)}</div>`;
   let baseBar = "";
   if (bm) {
-    const wBase = barWidthPct(bm, maxAbs);
-    const baseZero = !(Number(bm.value) > 0);
+    const wBase = bm.missing ? 48 : barWidthPct(bm, maxAbs);
+    const baseZero = bm.missing || !(Number(bm.value) > 0);
     baseBar = `<div class="cmp-bar base${baseZero ? " is-zero" : ""}" style="width:${Math.max(baseZero ? 48 : 8, wBase)}%">${formatBarNumber(bm)}</div>`;
   }
   const unit = metricUnitLabel(fm);
@@ -1010,9 +1027,17 @@ function renderScenarioBars() {
     ? matrix.rows.map((row) => {
         const focusS = row.byProject[focusKey];
         const baseS = baseKey ? row.byProject[baseKey] : null;
-        const fm = { key: `${row.viewType || ""} · ${row.name}`.replace(/^ · /, ""), kind: "rate", value: focusS ? focusS.ctrUser : 0 };
-        const bm = baseS ? { key: fm.key, kind: "rate", value: baseS.ctrUser } : null;
         if (!focusS && !baseS) return "";
+        // 无对齐数据时标 missing，避免把「缺数」显示成真实 0.0%
+        const fm = {
+          key: `${row.viewType || ""} · ${row.name}`.replace(/^ · /, ""),
+          kind: "rate",
+          value: focusS ? focusS.ctrUser : 0,
+          missing: !focusS
+        };
+        const bm = baseS
+          ? { key: fm.key, kind: "rate", value: baseS.ctrUser }
+          : (baseKey ? { key: fm.key, kind: "rate", value: 0, missing: true } : null);
         return renderCmpBarPair(fm, bm);
       }).filter(Boolean).join("")
     : '<p class="muted cmp-empty">当前筛选下无场景点击率</p>';
@@ -1130,7 +1155,9 @@ function syncFilters() {
 }
 
 function normSceneKey(viewType, name) {
-  return String(viewType || "").replace(/\s+/g, "").trim() + "||" + String(name || "").replace(/\s+/g, "").trim();
+  return String(viewType || "").replace(/\s+/g, "").trim().toLowerCase()
+    + "||"
+    + String(name || "").replace(/\s+/g, "").trim().toLowerCase();
 }
 function parseUrlsFromTextarea() {
   return String($("sheetUrls").value || "")
