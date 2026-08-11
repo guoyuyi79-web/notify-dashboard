@@ -7,14 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260811g" />
+  <link rel="stylesheet" href="/styles.css?v=20260811k" />
 </head>
 <body>
   <div class="wrap">
     <header class="hero">
       <div>
         <h1>通知运营看板</h1>
-        <p class="sub">项目代号选<strong>全部</strong> + 选择<strong>对比基准</strong>后分列对比。各模块可单独筛国家/品牌/日期/队列天。</p>
+        <p class="sub">全局筛选决定当前切片；KPI 表会展示国家/品牌/版本等维度内容。率与人均指标支持进度条对比可视化。</p>
       </div>
       <div id="statusPill" class="pill">未加载</div>
     </header>
@@ -30,11 +30,17 @@
     </section>
 
     <section class="panel">
-      <h2>2. 全局筛选</h2>
-      <p class="muted tip">多项目对比：项目代号保持「全部」，并选择<strong>对比基准</strong>。下面三个模块还可再覆盖国家/品牌/日期等维度。</p>
+      <h2>2. 全局筛选与对比</h2>
+      <p class="muted tip">对比维度=项目：多 Sheet 项目列对比。=版本 / 日期区间：同项目下做版本或时间对比（展开时该维自动取「全部」）。</p>
       <div class="filters">
+        <label>对比维度<select id="compareBy">
+          <option value="project">项目</option>
+          <option value="version">版本</option>
+          <option value="period">日期区间</option>
+        </select></label>
+        <label>对比基准<select id="baseline"></select></label>
         <label>项目代号<select id="project"></select></label>
-        <label>对比基准<select id="baselineProject"></select></label>
+        <label>版本<select id="version"></select></label>
         <label>国家<select id="country"></select></label>
         <label>设备品牌<select id="brand"></select></label>
         <label>日期区间<select id="period"></select></label>
@@ -45,27 +51,35 @@
       <div class="panel-head-row">
         <h2 class="inline-h2">总览 KPI</h2>
         <div class="mod-filters">
-          <label class="mod-filter">国家<select id="countryOverview"></select></label>
-          <label class="mod-filter">设备品牌<select id="brandOverview"></select></label>
-          <label class="mod-filter">日期区间<select id="periodOverview"></select></label>
           <label class="mod-filter">队列天数<select id="cohortDayOverview"></select></label>
         </div>
       </div>
+      <div id="dimContextOverview" class="dim-context muted"></div>
       <div id="stats"></div>
       <p class="muted tip">含 Day0–Dn 留存（DayN activeUsers / Day0 first_open）。比率差值为 pp，人数为涨跌幅 %。</p>
     </section>
 
     <section class="panel">
       <div class="panel-head-row">
+        <h2 class="inline-h2">率 / 人均 · 进度条对比</h2>
+        <div class="mod-filters">
+          <label class="mod-filter">对比项<select id="barFocus"></select></label>
+        </div>
+      </div>
+      <div id="rateAvgLegend" class="cmp-legend"></div>
+      <div id="rateAvgBars" class="cmp-bars"></div>
+      <p class="muted tip">仅展示比率与人均类指标。橙色=对比项，蓝色=基准（未设基准时取首列）。</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head-row">
         <h2 class="inline-h2">场景点击率（用户）</h2>
         <div class="mod-filters">
-          <label class="mod-filter">国家<select id="countryScenarioBars"></select></label>
-          <label class="mod-filter">设备品牌<select id="brandScenarioBars"></select></label>
-          <label class="mod-filter">日期区间<select id="periodScenarioBars"></select></label>
           <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
           <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
         </div>
       </div>
+      <div id="dimContextBars" class="dim-context muted"></div>
       <div id="scenarioBars" class="bars"></div>
       <p class="muted tip">多项目时按「查看类型 + 通知场景」同名对齐。</p>
     </section>
@@ -74,18 +88,16 @@
       <div class="panel-head-row">
         <h2 class="inline-h2">场景明细（绝对数）</h2>
         <div class="mod-filters">
-          <label class="mod-filter">国家<select id="countryScenarioTable"></select></label>
-          <label class="mod-filter">设备品牌<select id="brandScenarioTable"></select></label>
-          <label class="mod-filter">日期区间<select id="periodScenarioTable"></select></label>
           <label class="mod-filter">队列天数<select id="cohortDayScenarioTable"></select></label>
           <label class="mod-filter">查看类型<select id="viewTypeScenarioTable"></select></label>
         </div>
       </div>
+      <div id="dimContextTable" class="dim-context muted"></div>
       <div id="scenarioTable" class="table-wrap"></div>
       <p class="muted tip">人均通知 = 场景通知事件数 / Day0 first_open（与总览同分母）。</p>
     </section>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260811g"></script>
+  <script src="/app.js?v=20260811k"></script>
 </body>
 </html>
