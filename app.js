@@ -17,7 +17,8 @@ function setStatus(text, cls) {
 function pct(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "—";
-  return (n <= 1 ? n * 100 : n).toFixed(1) + "%";
+  // rates are ratios: 1 = 100%, can be >1 (e.g. DayN 渗透率)
+  return (n * 100).toFixed(1) + "%";
 }
 function num(v) {
   const n = Number(v);
