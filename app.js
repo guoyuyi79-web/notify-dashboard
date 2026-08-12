@@ -706,14 +706,17 @@ function buildScenarioList(rows, splitBySeries, cohortDay, scope) {
     const name = r["通知场景"] || "";
     if (!name) return;
     const viewType = r["查看类型"] || "";
+    const copy = String(r["文案"] || "").trim();
     let series = r["项目代号"] || "";
     if (mode === "version") series = r["版本"] || "全部";
     if (mode === "period") series = r["日期"] || "";
-    const k = (splitBySeries ? series + "||" : "") + viewType + "||" + name;
+    const useCopyKey = viewType === "文案分析" && copy;
+    const k = (splitBySeries ? series + "||" : "") + viewType + "||" + name + (useCopyKey ? "||" + copy : "");
     if (!agg[k]) {
-      agg[k] = { project: series, name, viewType, showUsers: 0, showCount: 0, clickUsers: 0, clickCount: 0 };
+      agg[k] = { project: series, name, viewType, copy: useCopyKey ? copy : (viewType === "文案分析" ? copy : ""), showUsers: 0, showCount: 0, clickUsers: 0, clickCount: 0 };
     }
     const t = agg[k];
+    if (!t.copy && copy) t.copy = copy;
     t.showUsers += Number(r["通知用户数"]) || 0;
     t.showCount += Number(r["通知事件数"]) || 0;
     t.clickUsers += Number(r["点击用户数"]) || 0;
@@ -756,9 +759,10 @@ function buildScenarioMatrix(rows, cohortDay, scope, sortMetric) {
   const flat = buildScenarioList(rows, true, cohortDay, scope);
   const map = {};
   flat.forEach((s) => {
-    const key = normSceneKey(s.viewType, s.name);
-    if (!map[key]) map[key] = { key, viewType: s.viewType || "", name: s.name, byProject: {} };
+    const key = normSceneKey(s.viewType, s.name) + "||" + String(s.copy || "").replace(/\s+/g, "").trim().toLowerCase();
+    if (!map[key]) map[key] = { key, viewType: s.viewType || "", name: s.name, copy: s.copy || "", byProject: {} };
     map[key].byProject[s.project || ""] = s;
+    if (!map[key].copy && s.copy) map[key].copy = s.copy;
   });
   const projects = orderSeries(seriesLabels(compareByValue()));
   const baseline = baselineValue();
@@ -801,7 +805,7 @@ function scenarioMetricDefs() {
 }
 
 /** 场景明细：数值列 + 独立「对比」列 */
-function renderScenarioCompareDetail(matrix) {
+function renderScenarioCompareDetail(matrix, showCopy) {
   const { projects, rows, baseline } = matrix;
   if (!rows.length) return '<p class="muted">当前模块筛选下无场景明细</p>';
   const metricDefs = scenarioMetricDefs();
@@ -810,7 +814,9 @@ function renderScenarioCompareDetail(matrix) {
     : projects.slice(1);
   const baseKey = baseline !== NONE ? baseline : projects[0];
 
-  const headParts = [`<th>查看类型</th><th>通知场景</th><th>指标</th>`];
+  const headParts = showCopy
+    ? [`<th>查看类型</th><th>通知场景</th><th>文案</th><th>指标</th>`]
+    : [`<th>查看类型</th><th>通知场景</th><th>指标</th>`];
   if (baseKey) headParts.push(`<th class="num">${baseKey}${baseline !== NONE ? "（基准）" : ""}</th>`);
   compareKeys.forEach((p) => {
     headParts.push(`<th class="num">${p}</th>`);
@@ -842,7 +848,10 @@ function renderScenarioCompareDetail(matrix) {
     });
     const typeCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.viewType || "—"}</td>` : "";
     const nameCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.name}</td>` : "";
-    return `<tr>${typeCell}${nameCell}<td>${md.key}</td>${cells.join("")}</tr>`;
+    const copyCell = showCopy && mi === 0
+      ? `<td rowspan="${metricDefs.length}" class="copy-cell">${escapeHtml(row.copy || "—")}</td>`
+      : "";
+    return `<tr>${typeCell}${nameCell}${copyCell}<td>${md.key}</td>${cells.join("")}</tr>`;
   }).join("")).join("");
 
   return `<div class="table-wrap"><table class="compare-table scenario-detail-compare table-left"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -1121,6 +1130,18 @@ function renderRateAvgBars(cols, metricSets) {
   host.innerHTML = rateAvg.map(({ focus: fm, base: bm }) => renderCmpBarPair(fm, bm)).join("");
 }
 
+function isCopyAnalysisView(viewType) {
+  const s = String(viewType || "").replace(/\s+/g, "").trim();
+  return s === "文案分析" || s.includes("文案");
+}
+
+function sceneBarLabel(s) {
+  if (isCopyAnalysisView(s.viewType) && s.copy) {
+    return `${s.name} · ${s.copy}`;
+  }
+  return [s.viewType, s.name].filter(Boolean).join(" · ");
+}
+
 function renderScenarioBars() {
   const day = $("cohortDayScenarioBars").value;
   const viewType = $("viewTypeScenarioBars").value;
@@ -1169,9 +1190,9 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
           const rate = getRate(s);
           const pctVal = Math.max(0, Math.min(100, rate * 100));
           const zero = !(pctVal > 0);
-          const name = [s.viewType, s.name].filter(Boolean).join(" · ");
+          const name = sceneBarLabel(s);
           return `<div class="cmp-row">
-            <div class="cmp-label" title="${name}">${name}</div>
+            <div class="cmp-label" title="${name.replace(/"/g, "&quot;")}">${name}</div>
             <div class="cmp-pair">
               ${renderTrackedBar(`focus-${barTone}`, pctVal, pctVal.toFixed(1), zero)}
             </div>
@@ -1221,7 +1242,7 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
         const baseS = baseKey ? row.byProject[baseKey] : null;
         if (!focusS && !baseS) return "";
         const fm = {
-          key: `${row.viewType || ""} · ${row.name}`.replace(/^ · /, ""),
+          key: sceneBarLabel(row),
           kind: "rate",
           value: focusS ? getRate(focusS) : 0,
           missing: !focusS
@@ -1239,16 +1260,22 @@ function renderScenarioTable() {
   const viewType = $("viewTypeScenarioTable").value;
   setDimContext("dimContextTable", globalFiltersDisplay());
   const rows = scenariosForScope(day, viewType);
+  const list = shouldCompareSeries()
+    ? null
+    : buildScenarioList(rows, true, day, "scenarioTable");
+  // 文案分析：固定展示「文案」列（红框位置：通知场景后）
+  const showCopy = isCopyAnalysisView(viewType)
+    || !!(list && list.some((s) => s.copy))
+    || (rows || []).some((r) => String(r["文案"] || "").trim());
 
   if (shouldCompareSeries()) {
-    $("scenarioTable").innerHTML = renderScenarioCompareDetail(buildScenarioMatrix(rows, day, "scenarioTable"));
+    $("scenarioTable").innerHTML = renderScenarioCompareDetail(buildScenarioMatrix(rows, day, "scenarioTable"), showCopy);
     return;
   }
 
-  const list = buildScenarioList(rows, true, day, "scenarioTable");
   $("scenarioTable").innerHTML = list.length
     ? `<div class="table-wrap"><table class="table-left"><thead><tr>
-        <th>系列</th><th>查看类型</th><th>通知场景</th>
+        <th>系列</th><th>查看类型</th><th>通知场景</th>${showCopy ? "<th>文案</th>" : ""}
         <th>通知用户数</th><th>通知事件数</th>
         <th>人均通知(通知事件数/day0 first_open)</th>
         <th>点击用户数</th><th>点击事件数</th>
@@ -1256,6 +1283,7 @@ function renderScenarioTable() {
         <th>人均点击</th>
       </tr></thead><tbody>${list.map((s) => `<tr>
         <td>${s.project || "—"}</td><td>${s.viewType || "—"}</td><td>${s.name}</td>
+        ${showCopy ? `<td class="copy-cell">${escapeHtml(s.copy || "—")}</td>` : ""}
         <td>${num(s.showUsers)}</td><td>${num(s.showCount)}</td>
         <td>${Number(s.avgNotify || 0).toFixed(2)}</td>
         <td>${num(s.clickUsers)}</td><td>${num(s.clickCount)}</td>
@@ -1263,6 +1291,14 @@ function renderScenarioTable() {
         <td>${Number(s.avgClick || 0).toFixed(2)}</td>
       </tr>`).join("")}</tbody></table></div>`
     : '<p class="muted">当前筛选下无场景明细</p>';
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function isAllDimLabel(v) {
@@ -1584,6 +1620,13 @@ function preferDefaultDay(days) {
   return days[0] || "全部";
 }
 
+function preferDefaultViewType(types) {
+  const list = (types || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (list.includes("行为分析")) return "行为分析";
+  if (list.length) return list[0];
+  return "行为分析";
+}
+
 function syncBaselineOptions() {
   const el = $("baseline");
   if (!el) return;
@@ -1618,18 +1661,27 @@ function syncFilters() {
   const dayOpts = days.length
     ? [{ value: ALL, label: "全部" }, ...days.map((d) => ({ value: d, label: d }))]
     : [{ value: ALL, label: "全部" }];
-  const viewOpts = meta.viewTypes && meta.viewTypes.length
-    ? [{ value: ALL, label: "全部" }, ...meta.viewTypes.map((v) => ({ value: v, label: v }))]
-    : [{ value: ALL, label: "全部" }];
+  const fromMeta = [...new Set((meta.viewTypes || []).map((t) => String(t || "").trim()).filter(Boolean))];
+  const viewTypes = fromMeta.length ? fromMeta : ["行为分析", "文案分析"];
+  // 场景模块：仅行为分析 / 文案分析，默认行为分析（不再默认「全部」）
+  const viewOpts = viewTypes.map((v) => ({ value: v, label: v }));
   const defaultDay = preferDefaultDay(days);
+  const defaultView = preferDefaultViewType(viewTypes);
 
   ["cohortDayOverview", "cohortDayScenarioBars", "cohortDayScenarioTable", "cohortDayAdBars", "cohortDayAdTable"].forEach((id) => {
     fillSelect($(id), dayOpts, true);
     if ($(id) && (!$(id).value || isAllToken($(id).value))) $(id).value = defaultDay;
   });
   ["viewTypeScenarioBars", "viewTypeScenarioTable"].forEach((id) => {
-    fillSelect($(id), viewOpts, true);
-    if ($(id) && !$(id).value) $(id).value = ALL;
+    const el = $(id);
+    if (!el) return;
+    const prev = el.value;
+    fillSelect(el, viewOpts, true);
+    if (prev && [...el.options].some((o) => o.value === prev) && !isAllToken(prev)) {
+      el.value = prev;
+    } else {
+      el.value = defaultView;
+    }
   });
   syncBaselineOptions();
 }
