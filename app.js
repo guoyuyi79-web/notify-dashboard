@@ -926,18 +926,27 @@ function renderCmpBarPair(fm, bm, tone) {
   if (fm.kind === "avg") {
     maxAbs = Math.max(Math.abs(Number(fm.value) || 0), bm ? Math.abs(Number(bm.value) || 0) : 0, 0.0001);
   }
-  const wFocus = fm.missing ? 48 : barWidthPct(fm, maxAbs);
+  // rate：分母固定 100，宽度=真实百分比；avg：相对本组最大值缩放
+  const wFocus = fm.missing ? 0 : barWidthPct(fm, maxAbs);
   const focusZero = fm.missing || !(Number(fm.value) > 0);
-  const focusBar = `<div class="cmp-bar ${focusClass}${focusZero ? " is-zero" : ""}" style="width:${Math.max(focusZero ? 48 : 8, wFocus)}%">${formatBarNumber(fm)}</div>`;
+  const focusW = focusZero ? 48 : (fm.kind === "rate" ? wFocus : Math.max(8, wFocus));
+  const focusBar = `<div class="cmp-bar ${focusClass}${focusZero ? " is-zero" : ""}" style="width:${focusW}${focusZero ? "px" : "%"}">${formatBarNumber(fm)}</div>`;
   let baseBar = "";
   if (bm) {
-    const wBase = bm.missing ? 48 : barWidthPct(bm, maxAbs);
+    const wBase = bm.missing ? 0 : barWidthPct(bm, maxAbs);
     const baseZero = bm.missing || !(Number(bm.value) > 0);
-    baseBar = `<div class="cmp-bar base${baseZero ? " is-zero" : ""}" style="width:${Math.max(baseZero ? 48 : 8, wBase)}%">${formatBarNumber(bm)}</div>`;
+    const baseW = baseZero ? 48 : (bm.kind === "rate" ? wBase : Math.max(8, wBase));
+    baseBar = `<div class="cmp-bar base${baseZero ? " is-zero" : ""}" style="width:${baseW}${baseZero ? "px" : "%"}">${formatBarNumber(bm)}</div>`;
   }
   const unit = metricUnitLabel(fm);
+  let deltaHtml = "";
+  if (bm) {
+    deltaHtml = (fm.missing || bm.missing)
+      ? `<div class="cmp-delta"><span class="delta flat">—</span></div>`
+      : `<div class="cmp-delta">${formatDelta(fm, bm)}</div>`;
+  }
   return `<div class="cmp-row">
-    <div class="cmp-label">${fm.key}${unit ? ` <span class="unit">${unit}</span>` : ""}</div>
+    <div class="cmp-label">${fm.key}${unit ? ` <span class="unit">${unit}</span>` : ""}${deltaHtml}</div>
     <div class="cmp-pair">${focusBar}${baseBar}</div>
   </div>`;
 }
@@ -1044,16 +1053,16 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
     if (syncFocus) syncFocusSelect("sceneBarFocus", overviewBySeries(day, "overview"));
     if (legend) legend.innerHTML = "";
     if (dimEl) dimEl.textContent = dimContextHtml(globalFiltersDisplay());
-    const max = Math.max(...list.map(getRate), 0.0001);
     host.innerHTML = list.length
       ? list.map((s) => {
           const rate = getRate(s);
-          const w = Math.max(4, Math.round((rate / max) * 100));
+          const pctVal = Math.max(0, Math.min(100, rate * 100));
+          const zero = !(pctVal > 0);
           const name = [s.viewType, s.name].filter(Boolean).join(" · ");
           return `<div class="cmp-row">
             <div class="cmp-label" title="${name}">${name}</div>
             <div class="cmp-pair">
-              <div class="cmp-bar focus-${barTone}" style="width:${w}%">${(rate * 100).toFixed(1)}</div>
+              <div class="cmp-bar focus-${barTone}${zero ? " is-zero" : ""}" style="width:${zero ? 48 : pctVal}${zero ? "px" : "%"}">${pctVal.toFixed(1)}</div>
             </div>
           </div>`;
         }).join("")
