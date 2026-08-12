@@ -1178,10 +1178,10 @@ function renderAll() {
 }
 
 function preferDefaultDay(days) {
-  const non0 = days.filter((d) => !isDay0Label(d));
-  if (non0.includes("Day1")) return "Day1";
-  if (non0.length) return non0[0];
+  if (!days || !days.length) return "全部";
   if (days.includes("Day0")) return "Day0";
+  const day0 = days.find((d) => isDay0Label(d));
+  if (day0) return day0;
   return days[0] || "全部";
 }
 
