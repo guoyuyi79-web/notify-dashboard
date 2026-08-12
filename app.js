@@ -373,13 +373,19 @@ function sceneFilterScope(which) {
   };
 }
 
-/** 文案分析 + 通知场景=全部 → 按文案跨场景汇总 */
+/** 文案分析 + 通知场景=全部 + 已筛具体文案 → 按文案跨场景汇总
+ *  通知场景与文案均为全部时，仍按「场景×文案」明细展示对应通知场景
+ */
 function shouldAggregateByCopy(which) {
   const viewId = which === "bars" ? "viewTypeScenarioBars" : "viewTypeScenarioTable";
   const viewType = ($(viewId) && $(viewId).value) || "";
   if (!isCopyAnalysisView(viewType)) return false;
   const local = sceneFilterScope(which || "table");
-  return !local.scenes || local.scenes.some(isAllToken) || local.scenes.includes("全部");
+  const sceneAll = !local.scenes || local.scenes.some(isAllToken) || local.scenes.includes("全部");
+  if (!sceneAll) return false;
+  const copyAll = !local.copies || local.copies.some(isAllToken) || local.copies.includes("全部");
+  // 文案也是全部：不汇总，展示各文案对应的通知场景
+  return !copyAll;
 }
 
 function scopeToSceneWhich(scope) {
