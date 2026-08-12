@@ -1974,41 +1974,154 @@ function exportStamp() {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
-async function waitForHtml2Canvas(timeoutMs) {
-  const deadline = Date.now() + (timeoutMs || 8000);
-  while (!window.html2canvas && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 80));
-  }
-  return !!window.html2canvas;
+function csvEscape(v) {
+  const s = String(v == null ? "" : v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
 }
 
-async function exportPanelAsPng(panelId, name) {
+function downloadCsv(filename, matrix) {
+  const bom = "\uFEFF";
+  const body = (matrix || []).map((row) => (row || []).map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob([bom + body], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function matrixFromTable(table) {
+  if (!table) return null;
+  const rows = [];
+  table.querySelectorAll("tr").forEach((tr) => {
+    const cells = [...tr.querySelectorAll("th,td")].map((td) =>
+      String(td.innerText || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim()
+    );
+    if (cells.some((c) => c !== "")) rows.push(cells);
+  });
+  return rows.length ? rows : null;
+}
+
+function cmpLabelText(labelEl) {
+  if (!labelEl) return "";
+  const clone = labelEl.cloneNode(true);
+  clone.querySelectorAll(".cmp-delta, .unit").forEach((n) => n.remove());
+  return String(clone.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function matrixFromCmpBars(host) {
+  if (!host) return null;
+  const items = [...host.querySelectorAll(".cmp-row")];
+  if (!items.length) return null;
+  const maxVals = Math.max(...items.map((row) => row.querySelectorAll(".cmp-bar-val").length), 1);
+  const head = maxVals >= 2 ? ["名称", "对比项", "基准"] : ["名称", "数值"];
+  const rows = [head];
+  items.forEach((row) => {
+    const name = cmpLabelText(row.querySelector(".cmp-label"));
+    const vals = [...row.querySelectorAll(".cmp-bar-val")].map((el) => String(el.textContent || "").trim());
+    while (vals.length < maxVals) vals.push("");
+    rows.push([name, ...vals.slice(0, maxVals)]);
+  });
+  return rows;
+}
+
+function matrixFromSceneCtrData() {
+  const day = $("cohortDayScenarioBars") && $("cohortDayScenarioBars").value;
+  const viewType = $("viewTypeScenarioBars") && $("viewTypeScenarioBars").value;
+  const rows = scenariosForScope(day, viewType, "bars");
+  if (shouldCompareSeries()) {
+    const userBars = matrixFromCmpBars($("scenarioBars"));
+    const eventBars = matrixFromCmpBars($("scenarioBarsEvent"));
+    if (!userBars && !eventBars) return null;
+    const out = [["模块", "名称", "对比项", "基准"]];
+    (userBars || []).slice(1).forEach((r) => out.push(["用户CTR", r[0], r[1] || "", r[2] || ""]));
+    (eventBars || []).slice(1).forEach((r) => out.push(["事件CTR", r[0], r[1] || "", r[2] || ""]));
+    return out;
+  }
+  const list = buildScenarioList(rows, false, day, "scenarioBars");
+  if (!list.length) return null;
+  const out = [[
+    "系列", "查看类型", "通知场景", "文案",
+    "通知用户数", "通知事件数", "点击用户数", "点击事件数",
+    "点击率(用户)%", "点击率(事件)%", "人均通知", "人均点击"
+  ]];
+  list.forEach((s) => {
+    out.push([
+      s.project || "",
+      s.viewType || "",
+      s.name || "",
+      s.copy || "",
+      s.showUsers || 0,
+      s.showCount || 0,
+      s.clickUsers || 0,
+      s.clickCount || 0,
+      ((Number(s.ctrUser) || 0) * 100).toFixed(1),
+      ((Number(s.ctrEvent) || 0) * 100).toFixed(1),
+      Number(s.avgNotify || 0).toFixed(2),
+      Number(s.avgClick || 0).toFixed(2)
+    ]);
+  });
+  return out;
+}
+
+function matrixFromAdBarsData() {
+  const day = ($("cohortDayAdBars") && $("cohortDayAdBars").value) || ALL;
+  const rows = adsForScope(day);
+  if (shouldCompareSeries()) return matrixFromCmpBars($("adBars"));
+  const list = buildAdList(rows, false);
+  if (!list.length) return null;
+  const out = [["广告位", "上报广告中介", "广告应展示数", "广告展示成功数", "广告展示成功率%"]];
+  list.forEach((s) => {
+    out.push([
+      s.place || "",
+      s.agency || "",
+      s.shouldShow || 0,
+      s.success || 0,
+      ((Number(s.successRate) || 0) * 100).toFixed(1)
+    ]);
+  });
+  return out;
+}
+
+function buildExportMatrix(panelId) {
+  if (panelId === "panelKpi") {
+    return matrixFromTable($("stats") && $("stats").querySelector("table"));
+  }
+  if (panelId === "panelRateAvg") {
+    return matrixFromCmpBars($("rateAvgBars"));
+  }
+  if (panelId === "panelSceneCtr") {
+    return matrixFromSceneCtrData();
+  }
+  if (panelId === "panelSceneTable") {
+    return matrixFromTable($("scenarioTable") && $("scenarioTable").querySelector("table"));
+  }
+  if (panelId === "panelAdBars") {
+    return matrixFromAdBarsData() || matrixFromCmpBars($("adBars"));
+  }
+  if (panelId === "panelAdTable") {
+    return matrixFromTable($("adTable") && $("adTable").querySelector("table"));
+  }
+  const panel = $(panelId);
+  return panel ? matrixFromTable(panel.querySelector("table")) : null;
+}
+
+function exportPanelAsCsv(panelId, name) {
   const panel = $(panelId);
   if (!panel) return toast("未找到要导出的模块");
   const btn = panel.querySelector(`.btn-export[data-export="${panelId}"]`);
   if (btn) btn.disabled = true;
   try {
-    if (!(await waitForHtml2Canvas())) {
-      return toast("导出组件未加载，请刷新后重试");
-    }
-    panel.querySelectorAll(".btn-export").forEach((b) => b.classList.add("export-hide"));
-    const canvas = await window.html2canvas(panel, {
-      backgroundColor: "#fffdf8",
-      scale: Math.min(2, window.devicePixelRatio || 2),
-      useCORS: true,
-      logging: false,
-      scrollX: 0,
-      scrollY: -window.scrollY
-    });
-    const link = document.createElement("a");
-    link.download = `${name || panelId}_${exportStamp()}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-    toast(`已导出：${link.download}`);
+    const matrix = buildExportMatrix(panelId);
+    if (!matrix || !matrix.length) return toast("当前无可导出的数据");
+    const filename = `${name || panelId}_${exportStamp()}.csv`;
+    downloadCsv(filename, matrix);
+    toast(`已导出：${filename}`);
   } catch (err) {
     toast(`导出失败：${err.message || err}`);
   } finally {
-    panel.querySelectorAll(".btn-export").forEach((b) => b.classList.remove("export-hide"));
     if (btn) btn.disabled = false;
   }
 }
@@ -2016,7 +2129,7 @@ async function exportPanelAsPng(panelId, name) {
 function bindExportButtons() {
   document.querySelectorAll(".btn-export[data-export]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      exportPanelAsPng(btn.getAttribute("data-export"), btn.getAttribute("data-export-name") || "模块");
+      exportPanelAsCsv(btn.getAttribute("data-export"), btn.getAttribute("data-export-name") || "模块");
     });
   });
 }

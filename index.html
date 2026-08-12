@@ -7,8 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260812v" />
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=20260812w" />
 </head>
 <body>
   <div class="wrap">
@@ -83,7 +82,7 @@
           <div class="mod-filters">
             <label class="mod-filter">队列天数<select id="cohortDayOverview"></select></label>
           </div>
-          <button type="button" class="btn-export" data-export="panelKpi" data-export-name="总览KPI">导出图片</button>
+          <button type="button" class="btn-export" data-export="panelKpi" data-export-name="总览KPI">导出CSV</button>
         </div>
       </div>
       <div id="dimContextOverview" class="dim-context muted"></div>
@@ -98,7 +97,7 @@
           <div class="mod-filters">
             <label class="mod-filter">对比项<select id="barFocus"></select></label>
           </div>
-          <button type="button" class="btn-export" data-export="panelRateAvg" data-export-name="率人均进度条">导出图片</button>
+          <button type="button" class="btn-export" data-export="panelRateAvg" data-export-name="率人均进度条">导出CSV</button>
         </div>
       </div>
       <div id="dimContextRateBars" class="dim-context muted"></div>
@@ -126,7 +125,7 @@
             </label>
             <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
           </div>
-          <button type="button" class="btn-export" data-export="panelSceneCtr" data-export-name="场景点击率">导出图片</button>
+          <button type="button" class="btn-export" data-export="panelSceneCtr" data-export-name="场景点击率">导出CSV</button>
         </div>
       </div>
       <p class="muted tip scene-ctr-shared-tip">下方左右模块共用上方筛选。橙条=用户 CTR，青绿条=事件 CTR。条长按 0–100% 真实比例动态展示。</p>
@@ -166,7 +165,7 @@
               <div class="ms-panel" id="copyTablePanel" hidden></div>
             </label>
           </div>
-          <button type="button" class="btn-export" data-export="panelSceneTable" data-export-name="场景明细">导出图片</button>
+          <button type="button" class="btn-export" data-export="panelSceneTable" data-export-name="场景明细">导出CSV</button>
         </div>
       </div>
       <div id="dimContextTable" class="dim-context muted"></div>
@@ -184,7 +183,7 @@
               <label class="mod-filter">队列天数<select id="cohortDayAdBars"></select></label>
               <label class="mod-filter">对比项<select id="adBarFocus"></select></label>
             </div>
-            <button type="button" class="btn-export" data-export="panelAdBars" data-export-name="广告展示成功率">导出图片</button>
+            <button type="button" class="btn-export" data-export="panelAdBars" data-export-name="广告展示成功率">导出CSV</button>
           </div>
         </div>
         <div id="dimContextAdBars" class="dim-context muted"></div>
@@ -200,7 +199,7 @@
             <div class="mod-filters">
               <label class="mod-filter">队列天数<select id="cohortDayAdTable"></select></label>
             </div>
-            <button type="button" class="btn-export" data-export="panelAdTable" data-export-name="广告明细">导出图片</button>
+            <button type="button" class="btn-export" data-export="panelAdTable" data-export-name="广告明细">导出CSV</button>
           </div>
         </div>
         <div id="dimContextAdTable" class="dim-context muted"></div>
@@ -210,6 +209,6 @@
     </div>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260812v"></script>
+  <script src="/app.js?v=20260812w"></script>
 </body>
 </html>
