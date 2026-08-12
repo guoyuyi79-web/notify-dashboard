@@ -147,17 +147,54 @@ function cleanOverview(rows) {
 function cleanScenario(rows) {
   return (rows || []).map((r) => {
     const o = { ...r };
+    const parseAbs = (raw) => {
+      if (raw === undefined || raw === null || raw === '') return 0;
+      let s = String(raw).trim().replace(/,/g, '');
+      if (!s) return 0;
+      // 误套百分比格式时，gviz 常导出 "50300.00%"（真实值 503）
+      if (s.endsWith('%')) {
+        const n = Number(s.slice(0, -1));
+        if (!Number.isFinite(n)) return 0;
+        if (Math.abs(n) > 100) return Math.round(n / 100);
+        return Math.round(n);
+      }
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const parseRate = (raw) => {
+      if (raw === undefined || raw === null || raw === '') return undefined;
+      const s = String(raw).trim().replace(/,/g, '');
+      if (!s) return undefined;
+      if (s.endsWith('%')) {
+        const n = Number(s.slice(0, -1));
+        return Number.isFinite(n) ? n / 100 : undefined;
+      }
+      const n = Number(s);
+      // 表里可能是 0.34，也可能是未加 % 的 34
+      if (!Number.isFinite(n)) return undefined;
+      if (n > 1 && n <= 100) return n / 100;
+      return n;
+    };
     ['通知用户数', '通知事件数', '点击用户数', '点击事件数'].forEach((k) => {
-      if (o[k] !== undefined && o[k] !== '') o[k] = Number(String(o[k]).replace(/,/g, '')) || 0;
+      if (o[k] !== undefined && o[k] !== '') o[k] = parseAbs(o[k]);
     });
     Object.keys(o).forEach((k) => {
-      if (k.includes('点击率') || k.includes('人均')) {
-        const s = String(o[k] ?? '').trim();
-        if (!s) return;
-        if (s.endsWith('%')) o[k] = Number(s.replace('%', '')) / 100;
-        else o[k] = Number(s) || 0;
-      }
+      if (!(k.includes('点击率') || k.includes('人均'))) return;
+      const n = parseRate(o[k]);
+      if (n !== undefined) o[k] = n;
     });
+    // 点击事件数被格式污染为 0 时，用表内点击率(事件) × 通知事件数还原
+    const showCount = Number(o['通知事件数']) || 0;
+    const clickCount = Number(o['点击事件数']) || 0;
+    const ctrEvent = Number(o['点击率(事件)']);
+    if (clickCount <= 0 && showCount > 0 && Number.isFinite(ctrEvent) && ctrEvent > 0) {
+      o['点击事件数'] = Math.round(showCount * ctrEvent);
+    }
+    const clickUsers = Number(o['点击用户数']) || 0;
+    const avgClick = Number(o['人均点击']);
+    if (clickUsers > 0 && Number.isFinite(avgClick) && avgClick > 0 && !(Number(o['点击事件数']) > 0)) {
+      o['点击事件数'] = Math.round(clickUsers * avgClick);
+    }
     return o;
   });
 }
