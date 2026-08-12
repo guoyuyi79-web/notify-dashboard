@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260812f" />
+  <link rel="stylesheet" href="/styles.css?v=20260812g" />
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
 </head>
 <body>
   <div class="wrap">
@@ -67,11 +68,14 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="panelKpi">
       <div class="panel-head-row">
         <h2 class="inline-h2">总览 KPI</h2>
-        <div class="mod-filters">
-          <label class="mod-filter">队列天数<select id="cohortDayOverview"></select></label>
+        <div class="panel-head-right">
+          <div class="mod-filters">
+            <label class="mod-filter">队列天数<select id="cohortDayOverview"></select></label>
+          </div>
+          <button type="button" class="btn-export" data-export="panelKpi" data-export-name="总览KPI">导出图片</button>
         </div>
       </div>
       <div id="dimContextOverview" class="dim-context muted"></div>
@@ -79,11 +83,14 @@
       <p class="muted tip">对比维度已分列时，中间不再重复该维（如版本对比不展示「版本」列）。差值单独「对比」列：绿高红低。</p>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="panelRateAvg">
       <div class="panel-head-row">
         <h2 class="inline-h2">率 / 人均 · 进度条对比</h2>
-        <div class="mod-filters">
-          <label class="mod-filter">对比项<select id="barFocus"></select></label>
+        <div class="panel-head-right">
+          <div class="mod-filters">
+            <label class="mod-filter">对比项<select id="barFocus"></select></label>
+          </div>
+          <button type="button" class="btn-export" data-export="panelRateAvg" data-export-name="率人均进度条">导出图片</button>
         </div>
       </div>
       <div id="dimContextRateBars" class="dim-context muted"></div>
@@ -92,13 +99,16 @@
       <p class="muted tip">仅比率与人均。橙=对比项，蓝=基准。对比项可选任一列（含两个项目）。</p>
     </section>
 
-    <section class="panel scene-ctr-block">
+    <section class="panel scene-ctr-block" id="panelSceneCtr">
       <div class="panel-head-row scene-ctr-shared-head">
         <h2 class="inline-h2">场景点击率</h2>
-        <div class="mod-filters">
-          <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
-          <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
-          <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
+        <div class="panel-head-right">
+          <div class="mod-filters">
+            <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
+            <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
+            <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
+          </div>
+          <button type="button" class="btn-export" data-export="panelSceneCtr" data-export-name="场景点击率">导出图片</button>
         </div>
       </div>
       <p class="muted tip scene-ctr-shared-tip">下方左右模块共用上方筛选。橙条=用户 CTR，青绿条=事件 CTR。条长按 0–100% 真实比例动态展示。</p>
@@ -120,12 +130,15 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="panelSceneTable">
       <div class="panel-head-row">
         <h2 class="inline-h2">场景明细（绝对数）</h2>
-        <div class="mod-filters">
-          <label class="mod-filter">队列天数<select id="cohortDayScenarioTable"></select></label>
-          <label class="mod-filter">查看类型<select id="viewTypeScenarioTable"></select></label>
+        <div class="panel-head-right">
+          <div class="mod-filters">
+            <label class="mod-filter">队列天数<select id="cohortDayScenarioTable"></select></label>
+            <label class="mod-filter">查看类型<select id="viewTypeScenarioTable"></select></label>
+          </div>
+          <button type="button" class="btn-export" data-export="panelSceneTable" data-export-name="场景明细">导出图片</button>
         </div>
       </div>
       <div id="dimContextTable" class="dim-context muted"></div>
@@ -134,6 +147,6 @@
     </section>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260812f"></script>
+  <script src="/app.js?v=20260812g"></script>
 </body>
 </html>

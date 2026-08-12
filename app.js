@@ -1277,9 +1277,63 @@ async function loadSheets() {
   }
 }
 
+function exportStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+async function waitForHtml2Canvas(timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 8000);
+  while (!window.html2canvas && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  return !!window.html2canvas;
+}
+
+async function exportPanelAsPng(panelId, name) {
+  const panel = $(panelId);
+  if (!panel) return toast("未找到要导出的模块");
+  const btn = panel.querySelector(`.btn-export[data-export="${panelId}"]`);
+  if (btn) btn.disabled = true;
+  try {
+    if (!(await waitForHtml2Canvas())) {
+      return toast("导出组件未加载，请刷新后重试");
+    }
+    panel.querySelectorAll(".btn-export").forEach((b) => b.classList.add("export-hide"));
+    const canvas = await window.html2canvas(panel, {
+      backgroundColor: "#fffdf8",
+      scale: Math.min(2, window.devicePixelRatio || 2),
+      useCORS: true,
+      logging: false,
+      scrollX: 0,
+      scrollY: -window.scrollY
+    });
+    const link = document.createElement("a");
+    link.download = `${name || panelId}_${exportStamp()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    toast(`已导出：${link.download}`);
+  } catch (err) {
+    toast(`导出失败：${err.message || err}`);
+  } finally {
+    panel.querySelectorAll(".btn-export").forEach((b) => b.classList.remove("export-hide"));
+    if (btn) btn.disabled = false;
+  }
+}
+
+function bindExportButtons() {
+  document.querySelectorAll(".btn-export[data-export]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      exportPanelAsPng(btn.getAttribute("data-export"), btn.getAttribute("data-export-name") || "模块");
+    });
+  });
+}
+
 function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
   bindMultiSelectUI();
+  bindExportButtons();
 
   ["compareBy", "baseline"].forEach((id) => {
     const el = $(id);
