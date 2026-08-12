@@ -357,6 +357,7 @@ label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
   min-width: 0;
 }
 .cmp-track {
+  position: relative;
   width: 100%;
   min-height: 26px;
   background: #efe7da;
@@ -365,22 +366,29 @@ label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
   box-sizing: border-box;
 }
 .cmp-bar {
-  position: relative;
   height: 26px;
   border-radius: 4px;
   min-width: 0;
   max-width: 100%;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  color: #fff;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.04);
-  overflow: hidden;
   transition: width .25s ease;
   box-sizing: border-box;
+}
+.cmp-bar-val {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1;
+  pointer-events: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(239, 231, 218, 0.92);
 }
 .cmp-bar.focus,
 .cmp-bar.focus-user { background: #e8893a; }
@@ -388,9 +396,11 @@ label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
 .cmp-bar.base { background: #5b7fa6; }
 .cmp-bar.is-zero {
   background: transparent;
-  color: var(--muted);
   box-shadow: none;
-  width: 100% !important;
+  width: 0 !important;
+}
+.cmp-track:has(.cmp-bar.is-zero) .cmp-bar-val {
+  color: var(--muted);
 }
 .cmp-empty {
   padding: 8px 0;

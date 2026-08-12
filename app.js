@@ -920,6 +920,14 @@ function pickComparePair(cols, metricSets, focusElId) {
   };
 }
 
+function renderTrackedBar(barClass, widthPct, label, isZero) {
+  const w = isZero ? 0 : Math.max(0, Math.min(100, Number(widthPct) || 0));
+  return `<div class="cmp-track">
+    <div class="cmp-bar ${barClass}${isZero ? " is-zero" : ""}" style="width:${w}%"></div>
+    <span class="cmp-bar-val">${label}</span>
+  </div>`;
+}
+
 function renderCmpBarPair(fm, bm, tone) {
   const focusClass = tone === "event" ? "focus-event" : (tone === "user" ? "focus-user" : "focus");
   let maxAbs = 0;
@@ -930,13 +938,13 @@ function renderCmpBarPair(fm, bm, tone) {
   const wFocus = fm.missing ? 0 : barWidthPct(fm, maxAbs);
   const focusZero = fm.missing || !(Number(fm.value) > 0);
   const focusW = focusZero ? 0 : (fm.kind === "rate" ? wFocus : Math.max(8, wFocus));
-  const focusBar = `<div class="cmp-track"><div class="cmp-bar ${focusClass}${focusZero ? " is-zero" : ""}" style="width:${focusZero ? 100 : focusW}%">${formatBarNumber(fm)}</div></div>`;
+  const focusBar = renderTrackedBar(focusClass, focusW, formatBarNumber(fm), focusZero);
   let baseBar = "";
   if (bm) {
     const wBase = bm.missing ? 0 : barWidthPct(bm, maxAbs);
     const baseZero = bm.missing || !(Number(bm.value) > 0);
     const baseW = baseZero ? 0 : (bm.kind === "rate" ? wBase : Math.max(8, wBase));
-    baseBar = `<div class="cmp-track"><div class="cmp-bar base${baseZero ? " is-zero" : ""}" style="width:${baseZero ? 100 : baseW}%">${formatBarNumber(bm)}</div></div>`;
+    baseBar = renderTrackedBar("base", baseW, formatBarNumber(bm), baseZero);
   }
   const unit = metricUnitLabel(fm);
   let deltaHtml = "";
@@ -1062,7 +1070,7 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
           return `<div class="cmp-row">
             <div class="cmp-label" title="${name}">${name}</div>
             <div class="cmp-pair">
-              <div class="cmp-track"><div class="cmp-bar focus-${barTone}${zero ? " is-zero" : ""}" style="width:${zero ? 100 : pctVal}%">${pctVal.toFixed(1)}</div></div>
+              ${renderTrackedBar(`focus-${barTone}`, pctVal, pctVal.toFixed(1), zero)}
             </div>
           </div>`;
         }).join("")
