@@ -920,14 +920,15 @@ function pickComparePair(cols, metricSets, focusElId) {
   };
 }
 
-function renderCmpBarPair(fm, bm) {
+function renderCmpBarPair(fm, bm, tone) {
+  const focusClass = tone === "event" ? "focus-event" : (tone === "user" ? "focus-user" : "focus");
   let maxAbs = 0;
   if (fm.kind === "avg") {
     maxAbs = Math.max(Math.abs(Number(fm.value) || 0), bm ? Math.abs(Number(bm.value) || 0) : 0, 0.0001);
   }
   const wFocus = fm.missing ? 48 : barWidthPct(fm, maxAbs);
   const focusZero = fm.missing || !(Number(fm.value) > 0);
-  const focusBar = `<div class="cmp-bar focus${focusZero ? " is-zero" : ""}" style="width:${Math.max(focusZero ? 48 : 8, wFocus)}%">${formatBarNumber(fm)}</div>`;
+  const focusBar = `<div class="cmp-bar ${focusClass}${focusZero ? " is-zero" : ""}" style="width:${Math.max(focusZero ? 48 : 8, wFocus)}%">${formatBarNumber(fm)}</div>`;
   let baseBar = "";
   if (bm) {
     const wBase = bm.missing ? 48 : barWidthPct(bm, maxAbs);
@@ -1006,6 +1007,7 @@ function renderScenarioBars() {
   const rows = scenariosForScope(day, viewType);
   renderOneScenarioCtr({
     metric: "ctrUser",
+    tone: "user",
     day,
     rows,
     hostId: "scenarioBars",
@@ -1015,6 +1017,7 @@ function renderScenarioBars() {
   });
   renderOneScenarioCtr({
     metric: "ctrEvent",
+    tone: "event",
     day,
     rows,
     hostId: "scenarioBarsEvent",
@@ -1024,11 +1027,13 @@ function renderScenarioBars() {
   });
 }
 
-function renderOneScenarioCtr({ metric, day, rows, hostId, legendId, dimId, syncFocus }) {
+function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId, syncFocus }) {
   const host = $(hostId);
   const legend = $(legendId);
   const dimEl = $(dimId);
   if (!host) return;
+  const barTone = tone === "event" ? "event" : "user";
+  const swatchClass = barTone === "event" ? "focus-event" : "focus-user";
 
   const getRate = (s) => (s ? (Number(s[metric]) || 0) : 0);
 
@@ -1048,7 +1053,7 @@ function renderOneScenarioCtr({ metric, day, rows, hostId, legendId, dimId, sync
           return `<div class="cmp-row">
             <div class="cmp-label" title="${name}">${name}</div>
             <div class="cmp-pair">
-              <div class="cmp-bar focus" style="width:${w}%">${(rate * 100).toFixed(1)}</div>
+              <div class="cmp-bar focus-${barTone}" style="width:${w}%">${(rate * 100).toFixed(1)}</div>
             </div>
           </div>`;
         }).join("")
@@ -1085,9 +1090,9 @@ function renderOneScenarioCtr({ metric, day, rows, hostId, legendId, dimId, sync
 
   if (legend) {
     legend.innerHTML = baseKey
-      ? `<span class="cmp-legend-item"><span class="cmp-swatch focus"></span>${focusKey}</span>
+      ? `<span class="cmp-legend-item"><span class="cmp-swatch ${swatchClass}"></span>${focusKey}</span>
          <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${baseKey}（基准侧）</span>`
-      : `<span class="cmp-legend-item"><span class="cmp-swatch focus"></span>${focusKey}</span>`;
+      : `<span class="cmp-legend-item"><span class="cmp-swatch ${swatchClass}"></span>${focusKey}</span>`;
   }
 
   host.innerHTML = matrix.rows.length
@@ -1104,7 +1109,7 @@ function renderOneScenarioCtr({ metric, day, rows, hostId, legendId, dimId, sync
         const bm = baseS
           ? { key: fm.key, kind: "rate", value: getRate(baseS) }
           : (baseKey ? { key: fm.key, kind: "rate", value: 0, missing: true } : null);
-        return renderCmpBarPair(fm, bm);
+        return renderCmpBarPair(fm, bm, barTone);
       }).filter(Boolean).join("")
     : '<p class="muted cmp-empty">当前筛选下无场景点击率</p>';
 }
