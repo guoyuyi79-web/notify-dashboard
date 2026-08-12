@@ -1,4 +1,4 @@
-const state = { data: null };
+const state = { data: null, dataView: "notify" };
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = "notify_sheet_urls";
 const ALL = "__ALL__";
@@ -1265,6 +1265,285 @@ function renderScenarioTable() {
     : '<p class="muted">当前筛选下无场景明细</p>';
 }
 
+function isAllDimLabel(v) {
+  const s = String(v == null ? "" : v).trim();
+  return !s || s === "全部" || isAllToken(s);
+}
+
+function preferAdDetailRows(rows) {
+  let out = rows || [];
+  if (out.some((r) => !isAllDimLabel(r["广告位"]))) {
+    out = out.filter((r) => !isAllDimLabel(r["广告位"]));
+  }
+  if (out.some((r) => !isAllDimLabel(r["上报广告中介"]))) {
+    out = out.filter((r) => !isAllDimLabel(r["上报广告中介"]));
+  }
+  return out;
+}
+
+function adsForScope(cohortDay) {
+  if (!state.data) return [];
+  const g = globalFilters();
+  return preferAdDetailRows(
+    preferSummaryRows(
+      (state.data.ad || []).filter((r) => passGlobal(r, g) && passCohort(r, cohortDay)),
+      g
+    )
+  );
+}
+
+function adLabel(place, agency) {
+  const p = String(place || "全部").trim() || "全部";
+  const a = String(agency || "全部").trim() || "全部";
+  if (!isAllDimLabel(a)) return `${p} · ${a}`;
+  return p;
+}
+
+function buildAdList(rows, splitBySeries) {
+  const mode = compareByValue();
+  const agg = {};
+  (rows || []).forEach((r) => {
+    const place = String(r["广告位"] || "全部").trim() || "全部";
+    const agency = String(r["上报广告中介"] || "全部").trim() || "全部";
+    let series = r["项目代号"] || "";
+    if (mode === "version") series = r["版本"] || "全部";
+    if (mode === "period") series = r["日期"] || "";
+    const k = (splitBySeries ? series + "||" : "") + place + "||" + agency;
+    if (!agg[k]) {
+      agg[k] = { project: series, place, agency, shouldShow: 0, success: 0 };
+    }
+    agg[k].shouldShow += Number(r["广告应展示数"]) || 0;
+    agg[k].success += Number(r["广告展示成功数"]) || 0;
+  });
+  return Object.values(agg)
+    .map((s) => ({
+      ...s,
+      name: adLabel(s.place, s.agency),
+      successRate: s.shouldShow > 0 ? s.success / s.shouldShow : 0
+    }))
+    .sort((a, b) => {
+      const pc = String(a.project || "").localeCompare(String(b.project || ""), "zh");
+      if (pc) return pc;
+      return b.successRate - a.successRate;
+    });
+}
+
+function normAdKey(place, agency) {
+  return String(place || "").replace(/\s+/g, "").trim().toLowerCase()
+    + "||"
+    + String(agency || "").replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function buildAdMatrix(rows) {
+  const flat = buildAdList(rows, true);
+  const map = {};
+  flat.forEach((s) => {
+    const key = normAdKey(s.place, s.agency);
+    if (!map[key]) map[key] = { key, place: s.place, agency: s.agency, name: s.name, byProject: {} };
+    map[key].byProject[s.project || ""] = s;
+  });
+  const projects = orderSeries(seriesLabels(compareByValue()));
+  const baseline = baselineValue();
+  const rowsOut = Object.values(map).sort((a, b) => {
+    const base = baseline !== NONE ? baseline : projects[0];
+    const ca = base && a.byProject[base]
+      ? a.byProject[base].successRate
+      : Math.max(0, ...projects.map((p) => (a.byProject[p] && a.byProject[p].successRate) || 0));
+    const cb = base && b.byProject[base]
+      ? b.byProject[base].successRate
+      : Math.max(0, ...projects.map((p) => (b.byProject[p] && b.byProject[p].successRate) || 0));
+    return cb - ca;
+  });
+  return { projects, rows: rowsOut, baseline };
+}
+
+function emptyAdStats() {
+  return { shouldShow: 0, success: 0, successRate: 0 };
+}
+
+function adMetricDefs() {
+  return [
+    { key: "广告应展示数", kind: "abs", get: (s) => s.shouldShow },
+    { key: "广告展示成功数", kind: "abs", get: (s) => s.success },
+    { key: "广告展示成功率", kind: "rate", get: (s) => s.successRate }
+  ];
+}
+
+function renderAdCompareDetail(matrix) {
+  const { projects, rows, baseline } = matrix;
+  if (!rows.length) return '<p class="muted">当前筛选下无广告明细</p>';
+  const metricDefs = adMetricDefs();
+  const compareKeys = baseline !== NONE
+    ? projects.filter((p) => p !== baseline)
+    : projects.slice(1);
+  const baseKey = baseline !== NONE ? baseline : projects[0];
+
+  const headParts = [`<th>广告位</th><th>上报广告中介</th><th>指标</th>`];
+  if (baseKey) headParts.push(`<th class="num">${baseKey}${baseline !== NONE ? "（基准）" : ""}</th>`);
+  compareKeys.forEach((p) => {
+    headParts.push(`<th class="num">${p}</th>`);
+    headParts.push(`<th class="num">对比</th>`);
+  });
+
+  const body = rows.map((row) => metricDefs.map((md, mi) => {
+    const baseS = baseKey ? (row.byProject[baseKey] || emptyAdStats()) : null;
+    const cells = [];
+    if (baseKey) {
+      const s = row.byProject[baseKey];
+      cells.push(s
+        ? `<td class="num">${formatKpiValue({ kind: md.kind, value: md.get(s) })}</td>`
+        : `<td class="num muted">—</td>`);
+    }
+    compareKeys.forEach((p) => {
+      const s = row.byProject[p];
+      if (!s) {
+        cells.push(`<td class="num muted">—</td><td class="num muted">—</td>`);
+        return;
+      }
+      const m = { kind: md.kind, value: md.get(s) };
+      cells.push(`<td class="num">${formatKpiValue(m)}</td>`);
+      if (baseS && row.byProject[baseKey]) {
+        cells.push(`<td class="num">${formatDelta(m, { kind: md.kind, value: md.get(baseS) })}</td>`);
+      } else {
+        cells.push(`<td class="num muted">—</td>`);
+      }
+    });
+    const placeCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.place || "—"}</td>` : "";
+    const agencyCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.agency || "—"}</td>` : "";
+    return `<tr>${placeCell}${agencyCell}<td>${md.key}</td>${cells.join("")}</tr>`;
+  }).join("")).join("");
+
+  return `<div class="table-wrap"><table class="compare-table scenario-detail-compare table-left"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderAdBars() {
+  const host = $("adBars");
+  const legend = $("adCtrLegend");
+  const dimEl = $("dimContextAdBars");
+  if (!host) return;
+
+  const day = ($("cohortDayAdBars") && $("cohortDayAdBars").value) || ALL;
+  const rows = adsForScope(day);
+
+  if (!shouldCompareSeries()) {
+    const list = buildAdList(rows, false).slice().sort((a, b) => b.successRate - a.successRate);
+    syncFocusSelect("adBarFocus", overviewBySeries(day, "overview"));
+    if (legend) legend.innerHTML = "";
+    if (dimEl) dimEl.textContent = dimContextHtml(globalFiltersDisplay());
+    host.innerHTML = list.length
+      ? list.map((s) => {
+          const rate = Number(s.successRate) || 0;
+          const pctVal = Math.max(0, Math.min(100, rate * 100));
+          const zero = !(pctVal > 0);
+          return `<div class="cmp-row">
+            <div class="cmp-label" title="${s.name}">${s.name}</div>
+            <div class="cmp-pair">
+              ${renderTrackedBar("focus-user", pctVal, pctVal.toFixed(1), zero)}
+            </div>
+          </div>`;
+        }).join("")
+      : '<p class="muted cmp-empty">当前筛选下无广告成功率（请确认表格含 panel_ad）</p>';
+    return;
+  }
+
+  const matrix = buildAdMatrix(rows);
+  const cols = matrix.projects.map((k) => ({ key: k }));
+  syncFocusSelect("adBarFocus", cols);
+
+  const baseline = baselineValue();
+  let focusKey = ($("adBarFocus") && $("adBarFocus").value) || "";
+  if (!focusKey || !matrix.projects.includes(focusKey)) {
+    focusKey = matrix.projects.find((p) => p !== baseline) || matrix.projects[0];
+    if ($("adBarFocus")) $("adBarFocus").value = focusKey;
+  }
+  let baseKey = baseline !== NONE ? baseline : matrix.projects.find((p) => p !== focusKey);
+  if (baseKey === focusKey) baseKey = matrix.projects.find((p) => p !== focusKey);
+
+  const overviewCols = overviewBySeries(day, "overview");
+  const focusCol = overviewCols.find((c) => c.key === focusKey);
+  const baseCol = overviewCols.find((c) => c.key === baseKey);
+  if (dimEl) {
+    const lines = [];
+    if (focusCol) lines.push(`<div><strong class="dim-tag focus">${focusKey}</strong> ${seriesDimLine(focusCol)}</div>`);
+    else lines.push(`<div><strong class="dim-tag focus">${focusKey || "—"}</strong></div>`);
+    if (baseKey && baseCol) lines.push(`<div><strong class="dim-tag base">${baseKey}</strong> ${seriesDimLine(baseCol)}</div>`);
+    else if (baseKey) lines.push(`<div><strong class="dim-tag base">${baseKey}</strong></div>`);
+    dimEl.innerHTML = lines.join("") || dimContextHtml(globalFiltersDisplay());
+  }
+
+  if (legend) {
+    legend.innerHTML = baseKey
+      ? `<span class="cmp-legend-item"><span class="cmp-swatch focus-user"></span>${focusKey}</span>
+         <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${baseKey}（基准侧）</span>`
+      : `<span class="cmp-legend-item"><span class="cmp-swatch focus-user"></span>${focusKey || "—"}</span>`;
+  }
+
+  host.innerHTML = matrix.rows.length
+    ? matrix.rows.map((row) => {
+        const focusS = row.byProject[focusKey];
+        const baseS = baseKey ? row.byProject[baseKey] : null;
+        if (!focusS && !baseS) return "";
+        const fm = {
+          key: row.name,
+          kind: "rate",
+          value: focusS ? focusS.successRate : 0,
+          missing: !focusS
+        };
+        const bm = baseS
+          ? { key: fm.key, kind: "rate", value: baseS.successRate }
+          : (baseKey ? { key: fm.key, kind: "rate", value: 0, missing: true } : null);
+        return renderCmpBarPair(fm, bm, "user");
+      }).filter(Boolean).join("")
+    : '<p class="muted cmp-empty">当前筛选下无广告成功率</p>';
+}
+
+function renderAdTable() {
+  const day = ($("cohortDayAdTable") && $("cohortDayAdTable").value) || ALL;
+  setDimContext("dimContextAdTable", globalFiltersDisplay());
+  const rows = adsForScope(day);
+  const host = $("adTable");
+  if (!host) return;
+
+  if (shouldCompareSeries()) {
+    host.innerHTML = renderAdCompareDetail(buildAdMatrix(rows));
+    return;
+  }
+
+  const list = buildAdList(rows, true);
+  host.innerHTML = list.length
+    ? `<div class="table-wrap"><table class="table-left"><thead><tr>
+        <th>系列</th><th>广告位</th><th>上报广告中介</th>
+        <th>广告应展示数</th><th>广告展示成功数</th><th>广告展示成功率</th>
+      </tr></thead><tbody>${list.map((s) => `<tr>
+        <td>${s.project || "—"}</td>
+        <td>${s.place || "—"}</td>
+        <td>${s.agency || "—"}</td>
+        <td>${num(s.shouldShow)}</td>
+        <td>${num(s.success)}</td>
+        <td>${pct(s.successRate)}</td>
+      </tr>`).join("")}</tbody></table></div>`
+    : '<p class="muted">当前筛选下无广告明细（请确认表格含 panel_ad）</p>';
+}
+
+function applyDataView() {
+  const view = state.dataView === "ad" ? "ad" : "notify";
+  const notifyEl = $("viewNotify");
+  const adEl = $("viewAd");
+  if (notifyEl) notifyEl.hidden = view !== "notify";
+  if (adEl) adEl.hidden = view !== "ad";
+  document.querySelectorAll(".view-btn[data-view]").forEach((btn) => {
+    const on = btn.getAttribute("data-view") === view;
+    btn.classList.toggle("is-active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+}
+
+function setDataView(view) {
+  state.dataView = view === "ad" ? "ad" : "notify";
+  applyDataView();
+  renderAll();
+}
+
 function renderSources() {
   const el = $("sourceList");
   if (!state.data) {
@@ -1273,7 +1552,10 @@ function renderSources() {
   }
   const sources = state.data.sources || [];
   const errors = state.data.errors || [];
-  const ok = sources.map((s) => `✓ ${s.spreadsheetId.slice(0, 10)}… (${s.overviewRows}/${s.scenarioRows})`).join("　");
+  const ok = sources.map((s) => {
+    const adPart = s.adRows != null ? `/${s.adRows}` : "";
+    return `✓ ${s.spreadsheetId.slice(0, 10)}… (${s.overviewRows}/${s.scenarioRows}${adPart})`;
+  }).join("　");
   const bad = errors.map((e) => `✗ ${e.spreadsheetId.slice(0, 10)}… ${e.error}`).join("<br/>");
   el.innerHTML = [
     sources.length ? `<div>已加载 ${sources.length} 个表格：${ok}</div>` : "",
@@ -1282,9 +1564,15 @@ function renderSources() {
 }
 
 function renderAll() {
-  renderKpi();
-  renderScenarioBars();
-  renderScenarioTable();
+  applyDataView();
+  if (state.dataView === "ad") {
+    renderAdBars();
+    renderAdTable();
+  } else {
+    renderKpi();
+    renderScenarioBars();
+    renderScenarioTable();
+  }
   renderSources();
 }
 
@@ -1335,13 +1623,13 @@ function syncFilters() {
     : [{ value: ALL, label: "全部" }];
   const defaultDay = preferDefaultDay(days);
 
-  ["cohortDayOverview", "cohortDayScenarioBars", "cohortDayScenarioTable"].forEach((id) => {
+  ["cohortDayOverview", "cohortDayScenarioBars", "cohortDayScenarioTable", "cohortDayAdBars", "cohortDayAdTable"].forEach((id) => {
     fillSelect($(id), dayOpts, true);
-    if (!$(id).value || isAllToken($(id).value)) $(id).value = defaultDay;
+    if ($(id) && (!$(id).value || isAllToken($(id).value))) $(id).value = defaultDay;
   });
   ["viewTypeScenarioBars", "viewTypeScenarioTable"].forEach((id) => {
     fillSelect($(id), viewOpts, true);
-    if (!$(id).value) $(id).value = ALL;
+    if ($(id) && !$(id).value) $(id).value = ALL;
   });
   syncBaselineOptions();
 }
@@ -1377,7 +1665,8 @@ async function loadSheets() {
     renderAll();
     const n = json.meta.sourceCount || (json.sources || []).length;
     const errN = (json.errors || []).length;
-    setStatus(`已加载 ${n} 个项目 · ${json.meta.overviewRows}/${json.meta.scenarioRows} 行` + (errN ? ` · ${errN} 失败` : ""), errN ? "warn" : "ok");
+    const adN = json.meta.adRows != null ? `/${json.meta.adRows}` : "";
+    setStatus(`已加载 ${n} 个项目 · ${json.meta.overviewRows}/${json.meta.scenarioRows}${adN} 行` + (errN ? ` · ${errN} 失败` : ""), errN ? "warn" : "ok");
     toast(errN ? `完成：成功 ${n}，失败 ${errN}` : `已加载并清洗 ${n} 个项目表格`);
   } catch (err) {
     state.data = null;
@@ -1447,6 +1736,10 @@ function bind() {
   bindMultiSelectUI();
   bindExportButtons();
 
+  document.querySelectorAll(".view-btn[data-view]").forEach((btn) => {
+    btn.addEventListener("click", () => setDataView(btn.getAttribute("data-view")));
+  });
+
   ["compareBy", "baseline"].forEach((id) => {
     const el = $(id);
     if (!el) return;
@@ -1459,9 +1752,12 @@ function bind() {
   ["cohortDayOverview"].forEach((id) => $(id).addEventListener("change", renderKpi));
   if ($("barFocus")) $("barFocus").addEventListener("change", renderKpi);
   if ($("sceneBarFocus")) $("sceneBarFocus").addEventListener("change", renderScenarioBars);
+  if ($("adBarFocus")) $("adBarFocus").addEventListener("change", renderAdBars);
 
   ["cohortDayScenarioBars", "viewTypeScenarioBars"].forEach((id) => $(id).addEventListener("change", renderScenarioBars));
   ["cohortDayScenarioTable", "viewTypeScenarioTable"].forEach((id) => $(id).addEventListener("change", renderScenarioTable));
+  if ($("cohortDayAdBars")) $("cohortDayAdBars").addEventListener("change", renderAdBars);
+  if ($("cohortDayAdTable")) $("cohortDayAdTable").addEventListener("change", renderAdTable);
 
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
   if (saved) $("sheetUrls").value = saved;
@@ -1471,6 +1767,7 @@ function bind() {
   fillMultiSelect("country", [{ value: ALL, label: "全部" }], false);
   fillMultiSelect("brand", [{ value: ALL, label: "全部" }], false);
   fillMultiSelect("period", [{ value: ALL, label: "全部" }], false);
+  applyDataView();
   renderAll();
 }
 bind();

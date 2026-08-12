@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260812j" />
+  <link rel="stylesheet" href="/styles.css?v=20260812k" />
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
 </head>
 <body>
@@ -15,7 +15,7 @@
     <header class="hero">
       <div>
         <h1>📊 多维度通知看板-GYY版</h1>
-        <p class="sub">全局筛选支持多选并吸顶固定。率/人均与场景点击率均支持进度条对比；KPI 展示国家/品牌/版本/时间周期。有问题找gyy进行反馈，反馈的不一定改但一定会记录</p>
+        <p class="sub">全局筛选支持多选并吸顶固定。可切换通知 / 广告视图；率与成功率均支持进度条对比。有问题找gyy进行反馈，反馈的不一定改但一定会记录</p>
       </div>
       <div id="statusPill" class="pill">未加载</div>
     </header>
@@ -26,7 +26,7 @@
       <div class="url-row actions">
         <button id="btnLoad" type="button">加载并清洗全部</button>
       </div>
-      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>。</p>
+      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>；广告视图另需 <code>panel_ad</code>。</p>
       <div id="sourceList" class="source-list muted"></div>
     </section>
 
@@ -66,8 +66,16 @@
           <div class="ms-panel" id="periodPanel" hidden></div>
         </div>
       </div>
+      <div class="view-toggle-row">
+        <span class="ms-label">数据视图</span>
+        <div class="view-toggle" role="tablist" aria-label="数据视图">
+          <button type="button" class="view-btn is-active" data-view="notify" role="tab" aria-selected="true">通知</button>
+          <button type="button" class="view-btn" data-view="ad" role="tab" aria-selected="false">广告</button>
+        </div>
+      </div>
     </section>
 
+    <div id="viewNotify">
     <section class="panel" id="panelKpi">
       <div class="panel-head-row">
         <h2 class="inline-h2">总览 KPI</h2>
@@ -145,8 +153,43 @@
       <div id="scenarioTable" class="table-wrap"></div>
       <p class="muted tip">对比差值单独成列。人均通知 = 场景通知事件数 / Day0 first_open。</p>
     </section>
+    </div>
+
+    <div id="viewAd" hidden>
+      <section class="panel" id="panelAdBars">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">广告展示成功率 · 进度条</h2>
+          <div class="panel-head-right">
+            <div class="mod-filters">
+              <label class="mod-filter">队列天数<select id="cohortDayAdBars"></select></label>
+              <label class="mod-filter">对比项<select id="adBarFocus"></select></label>
+            </div>
+            <button type="button" class="btn-export" data-export="panelAdBars" data-export-name="广告展示成功率">导出图片</button>
+          </div>
+        </div>
+        <div id="dimContextAdBars" class="dim-context muted"></div>
+        <div id="adCtrLegend" class="cmp-legend"></div>
+        <div id="adBars" class="cmp-bars"></div>
+        <p class="muted tip">成功率 = 广告展示成功数 ÷ 广告应展示数。条长按 0–100% 真实比例动态展示。</p>
+      </section>
+
+      <section class="panel" id="panelAdTable">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">广告明细</h2>
+          <div class="panel-head-right">
+            <div class="mod-filters">
+              <label class="mod-filter">队列天数<select id="cohortDayAdTable"></select></label>
+            </div>
+            <button type="button" class="btn-export" data-export="panelAdTable" data-export-name="广告明细">导出图片</button>
+          </div>
+        </div>
+        <div id="dimContextAdTable" class="dim-context muted"></div>
+        <div id="adTable" class="table-wrap"></div>
+        <p class="muted tip">对比差值单独成列。成功率由成功数 / 应展示数重算。</p>
+      </section>
+    </div>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260812j"></script>
+  <script src="/app.js?v=20260812k"></script>
 </body>
 </html>
