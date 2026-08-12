@@ -162,7 +162,30 @@ function cleanScenario(rows) {
   });
 }
 
-async function loadOneSheet(entry, overviewName, scenarioName) {
+function cleanAd(rows) {
+  return (rows || []).map((r) => {
+    const o = { ...r };
+    ['广告应展示数', '广告展示成功数'].forEach((k) => {
+      if (o[k] !== undefined && o[k] !== '') o[k] = Number(String(o[k]).replace(/,/g, '')) || 0;
+    });
+    const parseRate = (raw) => {
+      if (raw === undefined || raw === null || raw === '') return undefined;
+      const s = String(raw).trim().replace(/,/g, '');
+      if (!s) return undefined;
+      if (s.endsWith('%')) {
+        const n = Number(s.slice(0, -1));
+        return Number.isFinite(n) ? n / 100 : 0;
+      }
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const rate = parseRate(o['广告展示成功率']);
+    if (rate !== undefined) o['广告展示成功率'] = rate;
+    return o;
+  });
+}
+
+async function loadOneSheet(entry, overviewName, scenarioName, adName) {
   const [overviewRaw, scenarioRaw] = await Promise.all([
     fetchSheetCsv(entry.id, overviewName),
     fetchSheetCsv(entry.id, scenarioName)
@@ -175,7 +198,17 @@ async function loadOneSheet(entry, overviewName, scenarioName) {
     ...r,
     _spreadsheetId: entry.id
   }));
-  return { id: entry.id, url: entry.url, overview, scenario };
+  let ad = [];
+  try {
+    const adRaw = await fetchSheetCsv(entry.id, adName);
+    ad = cleanAd(adRaw).map((r) => ({
+      ...r,
+      _spreadsheetId: entry.id
+    }));
+  } catch (_) {
+    ad = [];
+  }
+  return { id: entry.id, url: entry.url, overview, scenario, ad };
 }
 
 module.exports = async function handler(req, res) {
@@ -192,15 +225,17 @@ module.exports = async function handler(req, res) {
 
     const overviewName = (req.query && req.query.overview) || 'panel_overview';
     const scenarioName = (req.query && req.query.scenario) || 'panel_scenario';
+    const adName = (req.query && req.query.ad) || 'panel_ad';
 
     const settled = await Promise.allSettled(
-      entries.map((e) => loadOneSheet(e, overviewName, scenarioName))
+      entries.map((e) => loadOneSheet(e, overviewName, scenarioName, adName))
     );
 
     const sources = [];
     const errors = [];
     let overview = [];
     let scenario = [];
+    let ad = [];
 
     settled.forEach((item, idx) => {
       if (item.status === 'fulfilled') {
@@ -208,10 +243,12 @@ module.exports = async function handler(req, res) {
           spreadsheetId: item.value.id,
           url: item.value.url,
           overviewRows: item.value.overview.length,
-          scenarioRows: item.value.scenario.length
+          scenarioRows: item.value.scenario.length,
+          adRows: (item.value.ad || []).length
         });
         overview = overview.concat(item.value.overview);
         scenario = scenario.concat(item.value.scenario);
+        ad = ad.concat(item.value.ad || []);
       } else {
         errors.push({
           url: entries[idx].url,
@@ -233,14 +270,31 @@ module.exports = async function handler(req, res) {
       const s = String(v || '').trim();
       return !s || s === '全部' || s === '__ALL__' || s.toLowerCase() === 'all';
     };
-    const projects = [...new Set(overview.map((r) => r['项目代号']).filter(Boolean))];
-    const countries = [...new Set(overview.map((r) => String(r['国家'] || '').trim()).filter((v) => !isAllLabel(v)))];
-    const brands = [...new Set(overview.map((r) => String(r['设备品牌'] || '').trim()).filter((v) => !isAllLabel(v)))];
-    const versions = [...new Set(overview.map((r) => String(r['版本'] || '').trim()).filter((v) => !isAllLabel(v)))];
-    const periods = [...new Set(overview.map((r) => r['日期']).filter(Boolean))];
+    const projects = [...new Set(
+      overview.map((r) => r['项目代号']).concat(ad.map((r) => r['项目代号'])).filter(Boolean)
+    )];
+    const countries = [...new Set(
+      overview.map((r) => String(r['国家'] || '').trim())
+        .concat(ad.map((r) => String(r['国家'] || '').trim()))
+        .filter((v) => !isAllLabel(v))
+    )];
+    const brands = [...new Set(
+      overview.map((r) => String(r['设备品牌'] || '').trim())
+        .concat(ad.map((r) => String(r['设备品牌'] || '').trim()))
+        .filter((v) => !isAllLabel(v))
+    )];
+    const versions = [...new Set(
+      overview.map((r) => String(r['版本'] || '').trim())
+        .concat(ad.map((r) => String(r['版本'] || '').trim()))
+        .filter((v) => !isAllLabel(v))
+    )];
+    const periods = [...new Set(
+      overview.map((r) => r['日期']).concat(ad.map((r) => r['日期'])).filter(Boolean)
+    )];
     const cohortDayRaw = []
       .concat(overview.map((r) => r['队列天数']))
       .concat(scenario.map((r) => r['队列天数']))
+      .concat(ad.map((r) => r['队列天数']))
       .map((v) => (v === undefined || v === null ? '' : String(v).trim()))
       .filter((v) => v !== '');
     const cohortDays = [...new Set(cohortDayRaw)].sort((a, b) => {
@@ -250,12 +304,14 @@ module.exports = async function handler(req, res) {
       return String(a).localeCompare(String(b), 'zh');
     });
     const viewTypes = [...new Set(scenario.map((r) => r['查看类型']).filter(Boolean))];
+    const adPlaces = [...new Set(ad.map((r) => String(r['广告位'] || '').trim()).filter((v) => !isAllLabel(v)))];
+    const adNetworks = [...new Set(ad.map((r) => String(r['上报广告中介'] || '').trim()).filter((v) => !isAllLabel(v)))];
 
     return res.status(200).json({
       ok: true,
       sources,
       errors,
-      sheets: { overview: overviewName, scenario: scenarioName },
+      sheets: { overview: overviewName, scenario: scenarioName, ad: adName },
       meta: {
         projects,
         countries,
@@ -264,12 +320,16 @@ module.exports = async function handler(req, res) {
         periods,
         cohortDays,
         viewTypes,
+        adPlaces,
+        adNetworks,
         overviewRows: overview.length,
         scenarioRows: scenario.length,
+        adRows: ad.length,
         sourceCount: sources.length
       },
       overview,
-      scenario
+      scenario,
+      ad
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: String(err && err.message ? err.message : err) });
