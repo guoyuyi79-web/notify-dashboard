@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260812t" />
+  <link rel="stylesheet" href="/styles.css?v=20260812u" />
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
 </head>
 <body>
@@ -114,16 +114,16 @@
           <div class="mod-filters">
             <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
             <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
-            <div class="ms-field ms-field-compact" data-ms="sceneBars">
-              <span class="ms-label">通知场景</span>
+            <label class="mod-filter mod-filter-multi ms-field" data-ms="sceneBars">
+              通知场景
               <button type="button" class="ms-toggle" id="sceneBarsToggle" aria-expanded="false">全部</button>
               <div class="ms-panel" id="sceneBarsPanel" hidden></div>
-            </div>
-            <div class="ms-field ms-field-compact" data-ms="copyBars">
-              <span class="ms-label">文案</span>
+            </label>
+            <label class="mod-filter mod-filter-multi ms-field" data-ms="copyBars">
+              文案
               <button type="button" class="ms-toggle" id="copyBarsToggle" aria-expanded="false">全部</button>
               <div class="ms-panel" id="copyBarsPanel" hidden></div>
-            </div>
+            </label>
             <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
           </div>
           <button type="button" class="btn-export" data-export="panelSceneCtr" data-export-name="场景点击率">导出图片</button>
@@ -155,16 +155,16 @@
           <div class="mod-filters">
             <label class="mod-filter">队列天数<select id="cohortDayScenarioTable"></select></label>
             <label class="mod-filter">查看类型<select id="viewTypeScenarioTable"></select></label>
-            <div class="ms-field ms-field-compact" data-ms="sceneTable">
-              <span class="ms-label">通知场景</span>
+            <label class="mod-filter mod-filter-multi ms-field" data-ms="sceneTable">
+              通知场景
               <button type="button" class="ms-toggle" id="sceneTableToggle" aria-expanded="false">全部</button>
               <div class="ms-panel" id="sceneTablePanel" hidden></div>
-            </div>
-            <div class="ms-field ms-field-compact" data-ms="copyTable">
-              <span class="ms-label">文案</span>
+            </label>
+            <label class="mod-filter mod-filter-multi ms-field" data-ms="copyTable">
+              文案
               <button type="button" class="ms-toggle" id="copyTableToggle" aria-expanded="false">全部</button>
               <div class="ms-panel" id="copyTablePanel" hidden></div>
-            </div>
+            </label>
           </div>
           <button type="button" class="btn-export" data-export="panelSceneTable" data-export-name="场景明细">导出图片</button>
         </div>
@@ -210,6 +210,6 @@
     </div>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260812t"></script>
+  <script src="/app.js?v=20260812u"></script>
 </body>
 </html>

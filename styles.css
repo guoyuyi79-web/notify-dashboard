@@ -60,8 +60,11 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  font-weight: 400;
   color: var(--muted);
   line-height: 1.2;
+  position: relative;
+  margin: 0;
 }
 .mod-filter select {
   padding: 6px 8px;
@@ -72,54 +75,45 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
   font-weight: 400;
   border-radius: 8px;
   line-height: 1.2;
+  box-sizing: border-box;
 }
-.ms-field-compact {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: none;
-  grid: none;
+/* 多选筛选：左标题右框，标题加粗 */
+.mod-filter.mod-filter-multi {
+  font-weight: 700;
 }
-.ms-field-compact .ms-label {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.2;
-  white-space: nowrap;
-  margin: 0;
-}
-.ms-field-compact .ms-toggle {
+.mod-filter.mod-filter-multi .ms-toggle {
   width: auto;
   min-width: 110px;
-  max-width: 180px;
+  max-width: 200px;
   min-height: 32px;
   height: 32px;
   padding: 6px 26px 6px 8px;
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.2;
   border-radius: 8px;
   border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+  background: #fff !important;
+  color: var(--ink) !important;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-sizing: border-box;
 }
-.ms-field-compact .ms-toggle::after {
+.mod-filter.mod-filter-multi .ms-toggle::after {
   right: 8px;
   font-size: 10px;
+  color: var(--muted);
 }
-.ms-field-compact .ms-toggle[aria-expanded="true"] {
+.mod-filter.mod-filter-multi .ms-toggle[aria-expanded="true"] {
   border-color: var(--accent);
-  background: #fff;
-  color: var(--ink);
+  background: #fff !important;
+  color: var(--ink) !important;
 }
-.ms-field-compact .ms-panel {
+.mod-filter.mod-filter-multi .ms-panel {
   top: calc(100% + 4px);
-  left: auto;
-  right: 0;
+  left: 0;
+  right: auto;
   min-width: 180px;
   max-width: min(420px, 85vw);
   z-index: 80;
@@ -176,9 +170,19 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
   gap: 6px;
   align-content: start;
 }
+.mod-filter.ms-field {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  align-content: center;
+}
 .ms-label {
   font-size: 12px;
   color: var(--muted);
+}
+/* 全局多选标题加粗 */
+.filters-multi .ms-label {
+  font-weight: 700;
 }
 .view-toggle-row {
   display: flex;
@@ -270,6 +274,7 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
   margin: 0;
   border-radius: 8px;
   font-size: 12px;
+  font-weight: 600;
   color: var(--ink);
   cursor: pointer;
 }
