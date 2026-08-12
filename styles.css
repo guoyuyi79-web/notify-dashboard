@@ -66,6 +66,19 @@ h1 { font-family: var(--display); font-size: 34px; margin: 0 0 8px; font-weight:
   padding: 6px 8px;
   min-width: 110px;
 }
+.ms-field-compact {
+  min-width: 140px;
+  max-width: 220px;
+}
+.ms-field-compact .ms-toggle {
+  min-height: 34px;
+  padding: 6px 28px 6px 10px;
+  font-size: 12px;
+}
+.ms-field-compact .ms-panel {
+  max-width: min(420px, 85vw);
+  z-index: 80;
+}
 .dim-context {
   margin: -4px 0 12px;
   font-size: 12px;
@@ -451,6 +464,13 @@ th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: le
 th { color: var(--muted); font-size: 12px; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow: auto; }
+.copy-cell {
+  max-width: 280px;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.4;
+}
 .muted { color: var(--muted); font-size: 12px; }
 .tip { margin: 10px 0 0; }
 .pill { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 12px; background: #fff; }
