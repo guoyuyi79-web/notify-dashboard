@@ -929,14 +929,14 @@ function renderCmpBarPair(fm, bm, tone) {
   // rate：分母固定 100，宽度=真实百分比；avg：相对本组最大值缩放
   const wFocus = fm.missing ? 0 : barWidthPct(fm, maxAbs);
   const focusZero = fm.missing || !(Number(fm.value) > 0);
-  const focusW = focusZero ? 48 : (fm.kind === "rate" ? wFocus : Math.max(8, wFocus));
-  const focusBar = `<div class="cmp-bar ${focusClass}${focusZero ? " is-zero" : ""}" style="width:${focusW}${focusZero ? "px" : "%"}">${formatBarNumber(fm)}</div>`;
+  const focusW = focusZero ? 0 : (fm.kind === "rate" ? wFocus : Math.max(8, wFocus));
+  const focusBar = `<div class="cmp-track"><div class="cmp-bar ${focusClass}${focusZero ? " is-zero" : ""}" style="width:${focusZero ? 100 : focusW}%">${formatBarNumber(fm)}</div></div>`;
   let baseBar = "";
   if (bm) {
     const wBase = bm.missing ? 0 : barWidthPct(bm, maxAbs);
     const baseZero = bm.missing || !(Number(bm.value) > 0);
-    const baseW = baseZero ? 48 : (bm.kind === "rate" ? wBase : Math.max(8, wBase));
-    baseBar = `<div class="cmp-bar base${baseZero ? " is-zero" : ""}" style="width:${baseW}${baseZero ? "px" : "%"}">${formatBarNumber(bm)}</div>`;
+    const baseW = baseZero ? 0 : (bm.kind === "rate" ? wBase : Math.max(8, wBase));
+    baseBar = `<div class="cmp-track"><div class="cmp-bar base${baseZero ? " is-zero" : ""}" style="width:${baseZero ? 100 : baseW}%">${formatBarNumber(bm)}</div></div>`;
   }
   const unit = metricUnitLabel(fm);
   let deltaHtml = "";
@@ -1062,7 +1062,7 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
           return `<div class="cmp-row">
             <div class="cmp-label" title="${name}">${name}</div>
             <div class="cmp-pair">
-              <div class="cmp-bar focus-${barTone}${zero ? " is-zero" : ""}" style="width:${zero ? 48 : pctVal}${zero ? "px" : "%"}">${pctVal.toFixed(1)}</div>
+              <div class="cmp-track"><div class="cmp-bar focus-${barTone}${zero ? " is-zero" : ""}" style="width:${zero ? 100 : pctVal}%">${pctVal.toFixed(1)}</div></div>
             </div>
           </div>`;
         }).join("")
