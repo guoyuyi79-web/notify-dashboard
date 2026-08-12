@@ -482,34 +482,128 @@ function seriesLabels(mode) {
   return projects.slice();
 }
 
-function overviewBySeries(cohortDay, scope) {
+/** 多选且≥2 项时才拆列；「全部」不拆 */
+function concreteMultiSelected(arr) {
+  if (!arr || !arr.length || arr.some(isAllToken) || arr.includes("全部")) return null;
+  if (arr.length < 2) return null;
+  return arr.slice();
+}
+
+/** KPI 二次拆列维：国家 / 版本 / 设备品牌（版本对比时不再拆版本） */
+function secondaryExpandDims(mode) {
+  const ui = globalFilters();
+  const dims = [];
+  const countries = concreteMultiSelected(ui.countries);
+  if (countries) dims.push({ dim: "country", values: countries });
+  if (mode !== "version") {
+    const versions = concreteMultiSelected(ui.versions);
+    if (versions) dims.push({ dim: "version", values: versions });
+  }
+  const brands = concreteMultiSelected(ui.brands);
+  if (brands) dims.push({ dim: "brand", values: brands });
+  return dims;
+}
+
+function cartesianCombos(dims) {
+  if (!dims.length) return [{}];
+  return dims.reduce((acc, d) => {
+    const next = [];
+    acc.forEach((prev) => {
+      d.values.forEach((v) => next.push({ ...prev, [d.dim]: v }));
+    });
+    return next;
+  }, [{}]);
+}
+
+function makeExpandedColKey(primary, primaryCount, expands, combo) {
+  const parts = [];
+  const hasExpand = expands.length > 0;
+  if (primaryCount > 1 || !hasExpand) parts.push(primary);
+  expands.forEach((d) => {
+    if (combo[d.dim] != null) parts.push(combo[d.dim]);
+  });
+  return parts.join(" · ");
+}
+
+function plannedSeriesKeys(options) {
+  const mode = compareByValue();
+  const primary = seriesLabels(mode);
+  const expands = options && options.expandSecondary ? secondaryExpandDims(mode) : [];
+  const combos = cartesianCombos(expands);
+  const keys = [];
+  primary.forEach((p) => {
+    combos.forEach((combo) => {
+      keys.push(makeExpandedColKey(p, primary.length, expands, combo));
+    });
+  });
+  return keys;
+}
+
+function expandedDimsActive(mode) {
+  const expands = secondaryExpandDims(mode);
+  return {
+    country: expands.some((d) => d.dim === "country"),
+    version: expands.some((d) => d.dim === "version") || mode === "version",
+    brand: expands.some((d) => d.dim === "brand"),
+    period: mode === "period"
+  };
+}
+
+/**
+ * @param {string} cohortDay
+ * @param {string} scope
+ * @param {{ expandSecondary?: boolean }} [options] expandSecondary=true 时多选国家/版本/设备分列（总览 KPI）
+ */
+function overviewBySeries(cohortDay, scope, options) {
   const mode = compareByValue();
   const gBase = filtersFor(scope || "overview");
   const labels = seriesLabels(mode);
   const ui = globalFilters();
-  return labels.map((label) => {
-    const gOne = {
-      projects: gBase.projects.slice(),
-      versions: gBase.versions.slice(),
-      countries: gBase.countries.slice(),
-      brands: gBase.brands.slice(),
-      periods: (gBase.periods || []).slice()
-    };
-    if (mode === "project") gOne.projects = [label];
-    else if (mode === "version") gOne.versions = [label];
-    else if (mode === "period") gOne.periods = [label];
+  const expandSecondary = !!(options && options.expandSecondary);
+  const expands = expandSecondary ? secondaryExpandDims(mode) : [];
+  const combos = cartesianCombos(expands);
 
-    if (mode !== "project" && !ui.projects.some(isAllToken)) gOne.projects = ui.projects.slice();
-    if (mode !== "version" && !ui.versions.some(isAllToken)) gOne.versions = ui.versions.slice();
-    if (mode !== "period" && ui.periods.length) gOne.periods = ui.periods.slice();
+  const out = [];
+  labels.forEach((label) => {
+    combos.forEach((combo) => {
+      const gOne = {
+        projects: gBase.projects.slice(),
+        versions: gBase.versions.slice(),
+        countries: gBase.countries.slice(),
+        brands: gBase.brands.slice(),
+        periods: (gBase.periods || []).slice()
+      };
+      if (mode === "project") gOne.projects = [label];
+      else if (mode === "version") gOne.versions = [label];
+      else if (mode === "period") gOne.periods = [label];
 
-    const rows = preferSummaryRows(
-      (state.data.overview || []).filter((r) => passGlobal(r, gOne) && passCohort(r, cohortDay)),
-      gOne
-    );
-    const row = pickOverviewRow(rows, gOne);
-    return row ? { key: label, project: mode === "project" ? label : formatMultiLabel(gOne.projects), row, g: gOne } : null;
-  }).filter(Boolean);
+      if (mode !== "project" && !ui.projects.some(isAllToken)) gOne.projects = ui.projects.slice();
+      if (mode !== "version" && !ui.versions.some(isAllToken) && !combo.version) {
+        gOne.versions = ui.versions.slice();
+      }
+      if (mode !== "period" && ui.periods.length) gOne.periods = ui.periods.slice();
+
+      if (combo.country) gOne.countries = [combo.country];
+      if (combo.version) gOne.versions = [combo.version];
+      if (combo.brand) gOne.brands = [combo.brand];
+
+      const rows = preferSummaryRows(
+        (state.data.overview || []).filter((r) => passGlobal(r, gOne) && passCohort(r, cohortDay)),
+        gOne
+      );
+      const row = pickOverviewRow(rows, gOne);
+      if (!row) return;
+      const key = makeExpandedColKey(label, labels.length, expands, combo);
+      out.push({
+        key,
+        project: mode === "project" ? label : formatMultiLabel(gOne.projects),
+        row,
+        g: gOne,
+        expand: combo
+      });
+    });
+  });
+  return out;
 }
 
 function overviewByProject(cohortDay, scope) {
@@ -755,25 +849,27 @@ function renderScenarioCompareDetail(matrix) {
 }
 
 /** 维度列：对比维度本身已在右侧分列，中间不再重复展示 */
-function dimHeadersHtml() {
-  const mode = compareByValue();
+function dimHeadersHtml(hide) {
+  const h = hide || expandedDimsActive(compareByValue());
   const parts = [];
-  parts.push("<th>国家</th>");
-  parts.push("<th>品牌</th>");
-  if (mode !== "version") parts.push("<th>版本</th>");
-  if (mode !== "period") parts.push("<th>时间周期</th>");
+  if (!h.country) parts.push("<th>国家</th>");
+  if (!h.brand) parts.push("<th>品牌</th>");
+  if (!h.version) parts.push("<th>版本</th>");
+  if (!h.period) parts.push("<th>时间周期</th>");
   return parts.join("");
 }
 
-function dimCellsHtml(row, gShow) {
-  const mode = compareByValue();
+function dimCellsHtml(row, gShow, hide) {
+  const h = hide || expandedDimsActive(compareByValue());
   const country = (row && row["国家"]) || gShow.country || "全部";
   const brand = (row && (row["设备品牌"] || "全部")) || gShow.brand || "全部";
   const version = (row && (row["版本"] || "全部")) || gShow.version || "全部";
   const period = (row && row["日期"]) || gShow.period || "—";
-  const parts = [`<td>${country}</td>`, `<td>${brand}</td>`];
-  if (mode !== "version") parts.push(`<td>${version}</td>`);
-  if (mode !== "period") parts.push(`<td>${period}</td>`);
+  const parts = [];
+  if (!h.country) parts.push(`<td>${country}</td>`);
+  if (!h.brand) parts.push(`<td>${brand}</td>`);
+  if (!h.version) parts.push(`<td>${version}</td>`);
+  if (!h.period) parts.push(`<td>${period}</td>`);
   return parts.join("");
 }
 
@@ -781,8 +877,9 @@ function renderKpi() {
   const day = $("cohortDayOverview").value;
   const gShow = globalFiltersDisplay();
   setDimContext("dimContextOverview", gShow);
+  const hideDims = expandedDimsActive(compareByValue());
 
-  let cols = overviewBySeries(day, "overview");
+  let cols = overviewBySeries(day, "overview", { expandSecondary: true });
   if (!cols.length) {
     $("stats").innerHTML = '<p class="muted">当前条件下暂无 KPI</p>';
     renderRateAvgBars([], []);
@@ -797,22 +894,28 @@ function renderKpi() {
       .filter((m) => !/^Day0留存$/i.test(m.key))
   );
 
-  // 多列且未选基准时，默认用首列作基准，才能出「对比」列
+  // 基准需匹配当前列 key；多列默认首列作基准
+  if (cols.findIndex((c) => c.key === baseline) < 0) {
+    baseline = cols.length >= 2 ? cols[0].key : NONE;
+  }
   if (cols.length >= 2 && baseline === NONE) {
     baseline = cols[0].key;
   }
   const baseIdx = cols.findIndex((c) => c.key === baseline);
   const baseMetrics = baseIdx >= 0 ? metricSets[baseIdx] : null;
   const compareCols = cols.filter((c) => c.key !== baseline);
-  const dimHead = dimHeadersHtml();
+  const dimHead = dimHeadersHtml(hideDims);
   const dimSample = cols[0].row;
+  const wideTip = cols.length > 12
+    ? `<p class="muted tip">当前 KPI 已分 ${cols.length} 列，建议收窄国家/版本/设备多选。</p>`
+    : "";
 
   if (cols.length === 1) {
-    $("stats").innerHTML = `
+    $("stats").innerHTML = `${wideTip}
       <div class="table-wrap"><table class="compare-table">
         <thead><tr><th>指标</th>${dimHead}<th class="num">${cols[0].key}</th></tr></thead>
         <tbody>${metricSets[0].map((m) =>
-          `<tr><td>${m.key}</td>${dimCellsHtml(dimSample, gShow)}<td class="num">${formatKpiValue(m)}</td></tr>`
+          `<tr><td>${m.key}</td>${dimCellsHtml(dimSample, gShow, hideDims)}<td class="num">${formatKpiValue(m)}</td></tr>`
         ).join("")}</tbody>
       </table></div>`;
     renderRateAvgBars(cols, metricSets);
@@ -843,10 +946,10 @@ function renderKpi() {
         cells.push(`<td class="num muted">—</td>`);
       }
     });
-    return `<tr><td>${m0.key}</td>${dimCellsHtml(dimSample, gShow)}${cells.join("")}</tr>`;
+    return `<tr><td>${m0.key}</td>${dimCellsHtml(dimSample, gShow, hideDims)}${cells.join("")}</tr>`;
   }).join("");
 
-  $("stats").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+  $("stats").innerHTML = `${wideTip}<div class="table-wrap"><table class="compare-table"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
   renderRateAvgBars(cols, metricSets);
 }
 
@@ -1196,7 +1299,8 @@ function preferDefaultDay(days) {
 function syncBaselineOptions() {
   const el = $("baseline");
   if (!el) return;
-  const labels = seriesLabels(compareByValue());
+  let labels = plannedSeriesKeys({ expandSecondary: true });
+  if (!labels.length) labels = seriesLabels(compareByValue());
   const prev = el.value;
   fillSelect(el, [{ value: NONE, label: "无对比" }, ...labels.map((p) => ({ value: p, label: p }))], true);
   if (prev && [...el.options].some((o) => o.value === prev)) el.value = prev;
