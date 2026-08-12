@@ -277,6 +277,15 @@ function baselineValue() {
   return v;
 }
 
+/** 是否启用基准对比；「无对比」时走汇总展示 */
+function wantsBaselineCompare() {
+  return baselineValue() !== NONE;
+}
+
+function shouldCompareSeries() {
+  return wantsBaselineCompare() && seriesLabels(compareByValue()).length > 1;
+}
+
 function globalFilters() {
   return {
     projects: readMulti("project"),
@@ -362,6 +371,19 @@ function sceneFilterScope(which) {
     scenes: readMulti("sceneTable"),
     copies: readMulti("copyTable")
   };
+}
+
+/** 文案分析 + 通知场景=全部 → 按文案跨场景汇总 */
+function shouldAggregateByCopy(which) {
+  const viewId = which === "bars" ? "viewTypeScenarioBars" : "viewTypeScenarioTable";
+  const viewType = ($(viewId) && $(viewId).value) || "";
+  if (!isCopyAnalysisView(viewType)) return false;
+  const local = sceneFilterScope(which || "table");
+  return !local.scenes || local.scenes.some(isAllToken) || local.scenes.includes("全部");
+}
+
+function scopeToSceneWhich(scope) {
+  return String(scope || "").toLowerCase().includes("bar") ? "bars" : "table";
 }
 
 /** 选「全部」时优先用汇总行，但按项目分别处理，避免 A 有汇总、B 无汇总时把 B 整表滤掉 */
@@ -757,19 +779,41 @@ function scenariosForScope(cohortDay, viewType, which) {
 
 function buildScenarioList(rows, splitBySeries, cohortDay, scope) {
   const mode = compareByValue();
+  const which = scopeToSceneWhich(scope);
+  const byCopy = shouldAggregateByCopy(which);
   const agg = {};
   rows.forEach((r) => {
-    const name = r["通知场景"] || "";
-    if (!name) return;
     const viewType = r["查看类型"] || "";
     const copy = String(r["文案"] || "").trim();
     let series = r["项目代号"] || "";
     if (mode === "version") series = r["版本"] || "全部";
     if (mode === "period") series = r["日期"] || "";
-    const useCopyKey = viewType === "文案分析" && copy;
-    const k = (splitBySeries ? series + "||" : "") + viewType + "||" + name + (useCopyKey ? "||" + copy : "");
+
+    let name;
+    let k;
+    if (byCopy) {
+      if (!copy) return;
+      name = "全部";
+      k = (splitBySeries ? series + "||" : "") + viewType + "||COPY||" + copy;
+    } else {
+      name = r["通知场景"] || "";
+      if (!name) return;
+      const useCopyKey = isCopyAnalysisView(viewType) && copy;
+      k = (splitBySeries ? series + "||" : "") + viewType + "||" + name + (useCopyKey ? "||" + copy : "");
+    }
+
     if (!agg[k]) {
-      agg[k] = { project: series, name, viewType, copy: useCopyKey ? copy : (viewType === "文案分析" ? copy : ""), showUsers: 0, showCount: 0, clickUsers: 0, clickCount: 0 };
+      agg[k] = {
+        project: series,
+        name,
+        viewType,
+        copy: isCopyAnalysisView(viewType) ? copy : "",
+        aggregatedByCopy: byCopy,
+        showUsers: 0,
+        showCount: 0,
+        clickUsers: 0,
+        clickCount: 0
+      };
     }
     const t = agg[k];
     if (!t.copy && copy) t.copy = copy;
@@ -807,16 +851,23 @@ function buildScenarioList(rows, splitBySeries, cohortDay, scope) {
     });
 }
 
-function shouldCompareSeries() {
-  return seriesLabels(compareByValue()).length > 1;
-}
-
 function buildScenarioMatrix(rows, cohortDay, scope, sortMetric) {
   const flat = buildScenarioList(rows, true, cohortDay, scope);
   const map = {};
   flat.forEach((s) => {
-    const key = normSceneKey(s.viewType, s.name) + "||" + String(s.copy || "").replace(/\s+/g, "").trim().toLowerCase();
-    if (!map[key]) map[key] = { key, viewType: s.viewType || "", name: s.name, copy: s.copy || "", byProject: {} };
+    const key = s.aggregatedByCopy
+      ? ("copy||" + String(s.viewType || "").replace(/\s+/g, "").trim().toLowerCase() + "||" + String(s.copy || "").replace(/\s+/g, "").trim().toLowerCase())
+      : (normSceneKey(s.viewType, s.name) + "||" + String(s.copy || "").replace(/\s+/g, "").trim().toLowerCase());
+    if (!map[key]) {
+      map[key] = {
+        key,
+        viewType: s.viewType || "",
+        name: s.name,
+        copy: s.copy || "",
+        aggregatedByCopy: !!s.aggregatedByCopy,
+        byProject: {}
+      };
+    }
     map[key].byProject[s.project || ""] = s;
     if (!map[key].copy && s.copy) map[key].copy = s.copy;
   });
@@ -938,10 +989,82 @@ function dimCellsHtml(row, gShow, hide) {
   return parts.join("");
 }
 
+function aggregateOverviewCols(cols) {
+  if (!cols || !cols.length) return null;
+  if (cols.length === 1) {
+    return { ...cols[0], key: cols[0].key === "汇总" ? "汇总" : cols[0].key };
+  }
+  const sumKeys = ["总活跃用户", "授权数", "发送通知用户数", "发通知总数", "点击用户数", "点击事件数"];
+  const row = { ...(cols[0].row || {}) };
+  sumKeys.forEach((k) => { row[k] = 0; });
+  cols.forEach((c) => {
+    const r = c.row || {};
+    sumKeys.forEach((k) => { row[k] += Number(r[k]) || 0; });
+  });
+  const base = row["总活跃用户"] || 0;
+  const auth = row["授权数"] || 0;
+  const showUsers = row["发送通知用户数"] || 0;
+  const showCount = row["发通知总数"] || 0;
+  const clickUsers = row["点击用户数"] || 0;
+  const clickCount = row["点击事件数"] || 0;
+  row["授权率"] = base ? auth / base : 0;
+  row["通知渗透率"] = base ? showUsers / base : 0;
+  row["人均通知数"] = base ? showCount / base : 0;
+  row["点击率-用户"] = showUsers ? clickUsers / showUsers : 0;
+  row["点击率-事件"] = showCount ? clickCount / showCount : 0;
+  row["人均点击"] = clickUsers ? clickCount / clickUsers : 0;
+
+  const sample = cols[0].row || {};
+  const rateKeys = [];
+  const uninstallKey = Object.keys(sample).find((k) => /卸载率/.test(k));
+  if (uninstallKey) rateKeys.push(uninstallKey);
+  if (Object.prototype.hasOwnProperty.call(sample, "留存率")) rateKeys.push("留存率");
+  rateKeys.forEach((rk) => {
+    let est = 0;
+    let baseSum = 0;
+    cols.forEach((c) => {
+      const r = c.row || {};
+      const b = Number(r["总活跃用户"]) || 0;
+      est += b * asRate(r[rk]);
+      baseSum += b;
+    });
+    row[rk] = baseSum ? est / baseSum : 0;
+  });
+
+  // 合并各队列天留存：按 DayN 加权
+  const gMerged = {
+    projects: [],
+    versions: [],
+    countries: [],
+    brands: [],
+    periods: []
+  };
+  cols.forEach((c) => {
+    const g = c.g || {};
+    ["projects", "versions", "countries", "brands", "periods"].forEach((k) => {
+      (g[k] || []).forEach((v) => {
+        if (v && !gMerged[k].includes(v)) gMerged[k].push(v);
+      });
+    });
+  });
+  if (!gMerged.projects.length) gMerged.projects = ["全部"];
+  if (!gMerged.versions.length) gMerged.versions = ["全部"];
+  if (!gMerged.countries.length) gMerged.countries = ["全部"];
+  if (!gMerged.brands.length) gMerged.brands = ["全部"];
+
+  return {
+    key: "汇总",
+    project: "汇总",
+    row,
+    g: gMerged
+  };
+}
+
 function renderKpi() {
   const day = $("cohortDayOverview").value;
   const gShow = globalFiltersDisplay();
   setDimContext("dimContextOverview", gShow);
+  const compareOn = wantsBaselineCompare();
   const hideDims = expandedDimsActive(compareByValue());
 
   let cols = overviewBySeries(day, "overview", { expandSecondary: true });
@@ -949,6 +1072,12 @@ function renderKpi() {
     $("stats").innerHTML = '<p class="muted">当前条件下暂无 KPI</p>';
     renderRateAvgBars([], []);
     return;
+  }
+
+  // 无对比：多列合并为「汇总」，不展示差值
+  if (!compareOn && cols.length > 1) {
+    const merged = aggregateOverviewCols(cols);
+    cols = merged ? [merged] : cols.slice(0, 1);
   }
 
   let baseline = baselineValue();
@@ -959,26 +1088,28 @@ function renderKpi() {
       .filter((m) => !/^Day0留存$/i.test(m.key))
   );
 
-  // 基准需匹配当前列 key；多列默认首列作基准
-  if (cols.findIndex((c) => c.key === baseline) < 0) {
-    baseline = cols.length >= 2 ? cols[0].key : NONE;
+  // 仅在开启对比时校正/补齐基准；无对比保持 NONE
+  if (compareOn) {
+    if (cols.findIndex((c) => c.key === baseline) < 0) {
+      baseline = cols.length >= 2 ? cols[0].key : NONE;
+    }
+  } else {
+    baseline = NONE;
   }
-  if (cols.length >= 2 && baseline === NONE) {
-    baseline = cols[0].key;
-  }
-  const baseIdx = cols.findIndex((c) => c.key === baseline);
+  const baseIdx = compareOn ? cols.findIndex((c) => c.key === baseline) : -1;
   const baseMetrics = baseIdx >= 0 ? metricSets[baseIdx] : null;
-  const compareCols = cols.filter((c) => c.key !== baseline);
+  const compareCols = compareOn ? cols.filter((c) => c.key !== baseline) : [];
   const dimHead = dimHeadersHtml(hideDims);
   const dimSample = cols[0].row;
   const wideTip = cols.length > 12
     ? `<p class="muted tip">当前 KPI 已分 ${cols.length} 列，建议收窄国家/版本/设备多选。</p>`
     : "";
 
-  if (cols.length === 1) {
+  if (!compareOn || cols.length === 1) {
+    const colLabel = cols[0].key === "汇总" ? "汇总" : cols[0].key;
     $("stats").innerHTML = `${wideTip}
       <div class="table-wrap"><table class="compare-table">
-        <thead><tr><th>指标</th>${dimHead}<th class="num">${cols[0].key}</th></tr></thead>
+        <thead><tr><th>指标</th>${dimHead}<th class="num">${colLabel}</th></tr></thead>
         <tbody>${metricSets[0].map((m) =>
           `<tr><td>${m.key}</td>${dimCellsHtml(dimSample, gShow, hideDims)}<td class="num">${formatKpiValue(m)}</td></tr>`
         ).join("")}</tbody>
@@ -1063,19 +1194,22 @@ function syncFocusSelect(elId, cols) {
 function pickComparePair(cols, metricSets, focusElId) {
   if (!cols.length) return null;
   const baseline = baselineValue();
-  let baseIdx = baseline !== NONE ? cols.findIndex((c) => c.key === baseline) : -1;
-  if (baseIdx < 0 && cols.length >= 2) baseIdx = 0;
+  const compareOn = wantsBaselineCompare();
+  let baseIdx = compareOn && baseline !== NONE ? cols.findIndex((c) => c.key === baseline) : -1;
+  // 无对比：不自动选基准列，只展示单条汇总/当前列
+  if (compareOn && baseIdx < 0 && cols.length >= 2) baseIdx = 0;
 
   syncFocusSelect(focusElId || "barFocus", cols);
 
   let focusKey = ($(focusElId || "barFocus") && $(focusElId || "barFocus").value) || "";
   let focusIdx = cols.findIndex((c) => c.key === focusKey);
-  if (focusIdx < 0) focusIdx = cols.findIndex((c, i) => i !== baseIdx);
+  if (focusIdx < 0) {
+    focusIdx = compareOn ? cols.findIndex((c, i) => i !== baseIdx) : 0;
+  }
   if (focusIdx < 0) focusIdx = 0;
 
-  // 若对比项=基准，自动用另一列作蓝条
-  let blueIdx = baseIdx;
-  if (blueIdx === focusIdx) {
+  let blueIdx = compareOn ? baseIdx : -1;
+  if (compareOn && blueIdx === focusIdx) {
     blueIdx = cols.findIndex((c, i) => i !== focusIdx);
   }
   if (blueIdx < 0) blueIdx = -1;
@@ -1192,6 +1326,7 @@ function isCopyAnalysisView(viewType) {
 }
 
 function sceneBarLabel(s) {
+  if (s.aggregatedByCopy && s.copy) return s.copy;
   if (isCopyAnalysisView(s.viewType) && s.copy) {
     return `${s.name} · ${s.copy}`;
   }
@@ -1318,7 +1453,7 @@ function renderScenarioTable() {
   const rows = scenariosForScope(day, viewType, "table");
   const list = shouldCompareSeries()
     ? null
-    : buildScenarioList(rows, true, day, "scenarioTable");
+    : buildScenarioList(rows, false, day, "scenarioTable");
   // 文案分析：固定展示「文案」列（红框位置：通知场景后）
   const showCopy = isCopyAnalysisView(viewType)
     || !!(list && list.some((s) => s.copy))
