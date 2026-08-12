@@ -97,15 +97,14 @@ function formatMsSummary(id) {
   const set = multiState[id] || new Set([ALL]);
   const vals = [...set];
   if (!vals.length || vals.some(isAllToken)) return "全部";
-  return vals.join("、");
+  if (vals.length === 1) return vals[0];
+  if (vals.length === 2) return vals.join("、");
+  return `${vals[0]}、${vals[1]} 等${vals.length}项`;
 }
 
 function updateMsToggleLabel(id) {
   const btn = $(msToggleId(id));
-  if (!btn) return;
-  const text = formatMsSummary(id);
-  btn.textContent = text;
-  btn.title = text;
+  if (btn) btn.textContent = formatMsSummary(id);
 }
 
 function closeAllMsPanels(exceptId) {
@@ -236,7 +235,8 @@ function bindMultiSelectUI() {
 
 function formatMultiLabel(arr) {
   if (!arr || !arr.length || arr.some(isAllToken) || arr.includes("全部")) return "全部";
-  return arr.join("、");
+  if (arr.length <= 2) return arr.join("、");
+  return `${arr.slice(0, 2).join("、")} 等${arr.length}项`;
 }
 
 function compareByValue() {
@@ -313,39 +313,23 @@ function passViewType(r, viewType) {
   return String(r["查看类型"] || "") === viewType;
 }
 
-/** 选「全部」时优先用汇总行，但按项目分别处理，避免 A 有汇总、B 无汇总时把 B 整表滤掉 */
 function preferSummaryRows(rows, g) {
   let out = rows || [];
-  if (!out.length) return out;
-
   const countries = g.countries || (g.country ? [g.country] : ["全部"]);
   const brands = g.brands || (g.brand ? [g.brand] : ["全部"]);
   const versions = g.versions || (g.version ? [g.version] : ["全部"]);
-  const countryAll = countries.some(isAllToken) || countries.includes("全部");
-  const brandAll = brands.some(isAllToken) || brands.includes("全部");
-  const versionAll = versions.some(isAllToken) || versions.includes("全部");
-
-  const groupKey = (r) => String(r["项目代号"] || "") + "\u0001" + String(r["日期"] || "");
-  const byGroup = {};
-  out.forEach((r) => {
-    const k = groupKey(r);
-    if (!byGroup[k]) byGroup[k] = [];
-    byGroup[k].push(r);
-  });
-
-  const preferDim = (list, getVal, wantAll) => {
-    if (!wantAll) return list;
-    const summary = list.filter((r) => getVal(r) === "全部");
-    return summary.length ? summary : list;
-  };
-
-  out = Object.keys(byGroup).flatMap((k) => {
-    let list = byGroup[k];
-    list = preferDim(list, (r) => r["国家"] || "", countryAll);
-    list = preferDim(list, (r) => r["设备品牌"] || "全部", brandAll);
-    list = preferDim(list, (r) => r["版本"] || "全部", versionAll);
-    return list;
-  });
+  if (countries.some(isAllToken) || countries.includes("全部")) {
+    const allC = out.filter((r) => r["国家"] === "全部");
+    if (allC.length) out = allC;
+  }
+  if (brands.some(isAllToken) || brands.includes("全部")) {
+    const allB = out.filter((r) => (r["设备品牌"] || "全部") === "全部");
+    if (allB.length) out = allB;
+  }
+  if (versions.some(isAllToken) || versions.includes("全部")) {
+    const allV = out.filter((r) => (r["版本"] || "全部") === "全部");
+    if (allV.length) out = allV;
+  }
   return out;
 }
 
@@ -414,16 +398,13 @@ function pickOverviewRow(rows, g) {
 }
 
 function dimContextHtml(gDisp) {
-  const mode = compareByValue();
   const parts = [
     `国家 ${gDisp.country || "全部"}`,
-    `品牌 ${gDisp.brand || "全部"}`
+    `品牌 ${gDisp.brand || "全部"}`,
+    `版本 ${gDisp.version || "全部"}`,
+    `时间周期 ${gDisp.period || "—"}`
   ];
-  if (mode !== "version") parts.push(`版本 ${gDisp.version || "全部"}`);
-  if (mode !== "period") parts.push(`时间周期 ${gDisp.period || "—"}`);
-  if (gDisp.project && gDisp.project !== "全部" && mode !== "project") {
-    parts.unshift(`项目 ${gDisp.project}`);
-  }
+  if (gDisp.project && gDisp.project !== "全部") parts.unshift(`项目 ${gDisp.project}`);
   return `当前维度：${parts.join(" · ")}`;
 }
 
@@ -433,21 +414,13 @@ function setDimContext(id, gDisp) {
 }
 
 function seriesDimLine(col) {
-  const mode = compareByValue();
-  const gDisp = globalFiltersDisplay();
   const r = col.row || {};
-  const parts = [
-    `国家 ${gDisp.country || "全部"}`,
-    `品牌 ${gDisp.brand || "全部"}`
-  ];
-  // 对比维度已在行首标签展示，这里不再重复
-  if (mode !== "version") {
-    parts.push(`版本 ${gDisp.version !== "全部" ? gDisp.version : (r["版本"] || "全部")}`);
-  }
-  if (mode !== "period") {
-    parts.push(`时间周期 ${r["日期"] || gDisp.period || "—"}`);
-  }
-  return parts.join(" · ");
+  const g = col.g || {};
+  const country = r["国家"] || formatMultiLabel(g.countries) || "全部";
+  const brand = r["设备品牌"] || formatMultiLabel(g.brands) || "全部";
+  const version = r["版本"] || formatMultiLabel(g.versions) || "全部";
+  const period = r["日期"] || (g.periods && g.periods[0]) || "—";
+  return `国家 ${country} · 品牌 ${brand} · 版本 ${version} · 时间周期 ${period}`;
 }
 
 function seriesLabels(mode) {
@@ -753,27 +726,12 @@ function renderScenarioCompareDetail(matrix) {
   return `<div class="table-wrap"><table class="compare-table scenario-detail-compare"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
-/** 维度列：对比维度本身已在右侧分列，中间不再重复展示 */
-function dimHeadersHtml() {
-  const mode = compareByValue();
-  const parts = [];
-  parts.push("<th>国家</th>");
-  parts.push("<th>品牌</th>");
-  if (mode !== "version") parts.push("<th>版本</th>");
-  if (mode !== "period") parts.push("<th>时间周期</th>");
-  return parts.join("");
-}
-
 function dimCellsHtml(row, gShow) {
-  const mode = compareByValue();
   const country = (row && row["国家"]) || gShow.country || "全部";
   const brand = (row && (row["设备品牌"] || "全部")) || gShow.brand || "全部";
   const version = (row && (row["版本"] || "全部")) || gShow.version || "全部";
   const period = (row && row["日期"]) || gShow.period || "—";
-  const parts = [`<td>${country}</td>`, `<td>${brand}</td>`];
-  if (mode !== "version") parts.push(`<td>${version}</td>`);
-  if (mode !== "period") parts.push(`<td>${period}</td>`);
-  return parts.join("");
+  return `<td>${country}</td><td>${brand}</td><td>${version}</td><td>${period}</td>`;
 }
 
 function renderKpi() {
@@ -788,64 +746,50 @@ function renderKpi() {
     return;
   }
 
-  let baseline = baselineValue();
+  const baseline = baselineValue();
   cols = orderSeries(cols.map((c) => c.key)).map((k) => cols.find((c) => c.key === k)).filter(Boolean);
 
   const metricSets = cols.map((c) =>
     kpiMetricsFromOverview(c.row, retentionMetricsForSeries(c, "overview"))
       .filter((m) => !/^Day0留存$/i.test(m.key))
   );
-
-  // 多列且未选基准时，默认用首列作基准，才能出「对比」列
-  if (cols.length >= 2 && baseline === NONE) {
-    baseline = cols[0].key;
-  }
-  const baseIdx = cols.findIndex((c) => c.key === baseline);
+  const baseIdx = baseline !== NONE
+    ? cols.findIndex((c) => c.key === baseline)
+    : -1;
   const baseMetrics = baseIdx >= 0 ? metricSets[baseIdx] : null;
-  const compareCols = cols.filter((c) => c.key !== baseline);
-  const dimHead = dimHeadersHtml();
-  const dimSample = cols[0].row;
 
   if (cols.length === 1) {
+    const row = cols[0].row;
     $("stats").innerHTML = `
       <div class="table-wrap"><table class="compare-table">
-        <thead><tr><th>指标</th>${dimHead}<th class="num">${cols[0].key}</th></tr></thead>
+        <thead><tr><th>指标</th><th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th><th class="num">${cols[0].key}</th></tr></thead>
         <tbody>${metricSets[0].map((m) =>
-          `<tr><td>${m.key}</td>${dimCellsHtml(dimSample, gShow)}<td class="num">${formatKpiValue(m)}</td></tr>`
+          `<tr><td>${m.key}</td>${dimCellsHtml(row, gShow)}<td class="num">${formatKpiValue(m)}</td></tr>`
         ).join("")}</tbody>
       </table></div>`;
     renderRateAvgBars(cols, metricSets);
     return;
   }
 
-  const headParts = [`<th>指标</th>${dimHead}`];
-  if (baseIdx >= 0) {
-    headParts.push(`<th class="num">${cols[baseIdx].key}（基准）</th>`);
-  }
-  compareCols.forEach((c) => {
-    headParts.push(`<th class="num">${c.key}</th>`);
-    headParts.push(`<th class="num">对比</th>`);
-  });
+  const head = `<tr><th>指标</th><th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th>${cols.map((c) => {
+    const tag = c.key === baseline ? "（基准）" : "";
+    return `<th class="num">${c.key}${tag}</th>`;
+  }).join("")}</tr>`;
 
   const body = metricSets[0].map((m0, i) => {
-    const cells = [];
-    if (baseIdx >= 0) {
-      cells.push(`<td class="num">${formatKpiValue(metricSets[baseIdx][i])}</td>`);
-    }
-    compareCols.forEach((c) => {
-      const ci = cols.findIndex((x) => x.key === c.key);
+    const cells = cols.map((c, ci) => {
       const m = metricSets[ci][i];
-      cells.push(`<td class="num">${formatKpiValue(m)}</td>`);
-      if (baseMetrics) {
-        cells.push(`<td class="num">${formatDelta(m, baseMetrics[i])}</td>`);
-      } else {
-        cells.push(`<td class="num muted">—</td>`);
+      const main = formatKpiValue(m);
+      if (!baseMetrics || c.key === baseline) {
+        return `<td class="num">${main}</td>`;
       }
-    });
-    return `<tr><td>${m0.key}</td>${dimCellsHtml(dimSample, gShow)}${cells.join("")}</tr>`;
+      const delta = formatDelta(m, baseMetrics[i]);
+      return `<td class="num">${main}<div class="delta-line">${delta}</div></td>`;
+    }).join("");
+    return `<tr><td>${m0.key}</td>${dimCellsHtml(cols[0].row, gShow)}${cells}</tr>`;
   }).join("");
 
-  $("stats").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+  $("stats").innerHTML = `<div class="table-wrap"><table class="compare-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
   renderRateAvgBars(cols, metricSets);
 }
 
@@ -855,7 +799,6 @@ function metricUnitLabel(m) {
 }
 
 function formatBarNumber(m) {
-  if (m && m.missing) return "—";
   if (m.kind === "rate") {
     const n = Number(m.value);
     if (!Number.isFinite(n)) return "—";
@@ -924,13 +867,13 @@ function renderCmpBarPair(fm, bm) {
   if (fm.kind === "avg") {
     maxAbs = Math.max(Math.abs(Number(fm.value) || 0), bm ? Math.abs(Number(bm.value) || 0) : 0, 0.0001);
   }
-  const wFocus = fm.missing ? 48 : barWidthPct(fm, maxAbs);
-  const focusZero = fm.missing || !(Number(fm.value) > 0);
+  const wFocus = barWidthPct(fm, maxAbs);
+  const focusZero = !(Number(fm.value) > 0);
   const focusBar = `<div class="cmp-bar focus${focusZero ? " is-zero" : ""}" style="width:${Math.max(focusZero ? 48 : 8, wFocus)}%">${formatBarNumber(fm)}</div>`;
   let baseBar = "";
   if (bm) {
-    const wBase = bm.missing ? 48 : barWidthPct(bm, maxAbs);
-    const baseZero = bm.missing || !(Number(bm.value) > 0);
+    const wBase = barWidthPct(bm, maxAbs);
+    const baseZero = !(Number(bm.value) > 0);
     baseBar = `<div class="cmp-bar base${baseZero ? " is-zero" : ""}" style="width:${Math.max(baseZero ? 48 : 8, wBase)}%">${formatBarNumber(bm)}</div>`;
   }
   const unit = metricUnitLabel(fm);
@@ -1067,17 +1010,9 @@ function renderScenarioBars() {
     ? matrix.rows.map((row) => {
         const focusS = row.byProject[focusKey];
         const baseS = baseKey ? row.byProject[baseKey] : null;
+        const fm = { key: `${row.viewType || ""} · ${row.name}`.replace(/^ · /, ""), kind: "rate", value: focusS ? focusS.ctrUser : 0 };
+        const bm = baseS ? { key: fm.key, kind: "rate", value: baseS.ctrUser } : null;
         if (!focusS && !baseS) return "";
-        // 无对齐数据时标 missing，避免把「缺数」显示成真实 0.0%
-        const fm = {
-          key: `${row.viewType || ""} · ${row.name}`.replace(/^ · /, ""),
-          kind: "rate",
-          value: focusS ? focusS.ctrUser : 0,
-          missing: !focusS
-        };
-        const bm = baseS
-          ? { key: fm.key, kind: "rate", value: baseS.ctrUser }
-          : (baseKey ? { key: fm.key, kind: "rate", value: 0, missing: true } : null);
         return renderCmpBarPair(fm, bm);
       }).filter(Boolean).join("")
     : '<p class="muted cmp-empty">当前筛选下无场景点击率</p>';
@@ -1195,9 +1130,7 @@ function syncFilters() {
 }
 
 function normSceneKey(viewType, name) {
-  return String(viewType || "").replace(/\s+/g, "").trim().toLowerCase()
-    + "||"
-    + String(name || "").replace(/\s+/g, "").trim().toLowerCase();
+  return String(viewType || "").replace(/\s+/g, "").trim() + "||" + String(name || "").replace(/\s+/g, "").trim();
 }
 function parseUrlsFromTextarea() {
   return String($("sheetUrls").value || "")
