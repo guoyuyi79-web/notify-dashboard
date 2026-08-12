@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>通知运营看板</title>
+  <title>多维度通知看板-GYY版</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260811o" />
+  <link rel="stylesheet" href="/styles.css?v=20260812a" />
 </head>
 <body>
   <div class="wrap">
     <header class="hero">
       <div>
-        <h1>通知运营看板</h1>
-        <p class="sub">全局筛选支持多选并吸顶固定。率/人均与场景点击率均支持进度条对比；KPI 展示国家/品牌/版本/时间周期。</p>
+        <h1>📊 多维度通知看板-GYY版</h1>
+        <p class="sub">全局筛选支持多选并吸顶固定。率/人均与场景点击率均支持进度条对比；KPI 展示国家/品牌/版本/时间周期。有问题找gyy进行反馈，反馈的不一定改但一定会记录</p>
       </div>
       <div id="statusPill" class="pill">未加载</div>
     </header>
@@ -76,7 +76,7 @@
       </div>
       <div id="dimContextOverview" class="dim-context muted"></div>
       <div id="stats"></div>
-      <p class="muted tip">不含 Day0 留存行。比率对比为百分点差值（展示为 %），人数为涨跌幅 %。</p>
+      <p class="muted tip">对比维度已分列时，中间不再重复该维（如版本对比不展示「版本」列）。差值单独「对比」列：绿高红低。</p>
     </section>
 
     <section class="panel">
@@ -92,20 +92,32 @@
       <p class="muted tip">仅比率与人均。橙=对比项，蓝=基准。对比项可选任一列（含两个项目）。</p>
     </section>
 
-    <section class="panel">
-      <div class="panel-head-row">
-        <h2 class="inline-h2">场景点击率（用户）</h2>
-        <div class="mod-filters">
-          <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
-          <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
-          <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
+    <div class="grid2 scene-ctr-grid">
+      <section class="panel">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">场景点击率（用户）</h2>
+          <div class="mod-filters">
+            <label class="mod-filter">队列天数<select id="cohortDayScenarioBars"></select></label>
+            <label class="mod-filter">查看类型<select id="viewTypeScenarioBars"></select></label>
+            <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
+          </div>
         </div>
-      </div>
-      <div id="dimContextBars" class="dim-context muted"></div>
-      <div id="sceneCtrLegend" class="cmp-legend"></div>
-      <div id="scenarioBars" class="cmp-bars"></div>
-      <p class="muted tip">按「查看类型 + 通知场景」对齐；进度条随对比维度（项目/版本/日期）分列。</p>
-    </section>
+        <div id="dimContextBars" class="dim-context muted"></div>
+        <div id="sceneCtrLegend" class="cmp-legend"></div>
+        <div id="scenarioBars" class="cmp-bars"></div>
+        <p class="muted tip">点击率(用户)=点击用户/通知用户。与右侧共用筛选。</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">场景点击率（事件）</h2>
+        </div>
+        <div id="dimContextBarsEvent" class="dim-context muted"></div>
+        <div id="sceneCtrLegendEvent" class="cmp-legend"></div>
+        <div id="scenarioBarsEvent" class="cmp-bars"></div>
+        <p class="muted tip">点击率(事件)=点击事件/通知事件。筛选与左侧一致。</p>
+      </section>
+    </div>
 
     <section class="panel">
       <div class="panel-head-row">
@@ -121,6 +133,6 @@
     </section>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260811o"></script>
+  <script src="/app.js?v=20260812a"></script>
 </body>
 </html>
