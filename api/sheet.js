@@ -218,6 +218,12 @@ function cleanAd(rows) {
     };
     const rate = parseRate(o['广告展示成功率']);
     if (rate !== undefined) o['广告展示成功率'] = rate;
+    ['人均展示成功数', '人均展示次数'].forEach((k) => {
+      if (o[k] !== undefined && o[k] !== '') o[k] = Number(String(o[k]).replace(/,/g, '')) || 0;
+    });
+    if (o['人均展示成功数'] == null && o['人均展示次数'] != null) {
+      o['人均展示成功数'] = o['人均展示次数'];
+    }
     return o;
   });
 }
