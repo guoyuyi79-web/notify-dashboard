@@ -1,4 +1,4 @@
-const state = { data: null, dataView: "notify" };
+const state = { data: null, dataView: "notify", tableSort: {} };
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = "notify_sheet_urls";
 const ALL = "__ALL__";
@@ -36,6 +36,48 @@ function num(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "—";
   return Math.round(n).toLocaleString("en-US");
+}
+
+function tableSortState(scope) {
+  return state.tableSort[scope] || { key: null, dir: "desc" };
+}
+
+function toggleTableSort(scope, key) {
+  const cur = tableSortState(scope);
+  if (cur.key === key) {
+    state.tableSort[scope] = { key, dir: cur.dir === "desc" ? "asc" : "desc" };
+  } else {
+    state.tableSort[scope] = { key, dir: "desc" };
+  }
+}
+
+function applyTableSort(list, scope, getters) {
+  const { key, dir } = tableSortState(scope);
+  const get = key && getters[key];
+  if (!get) return list || [];
+  const mul = dir === "asc" ? 1 : -1;
+  return [...(list || [])].sort((a, b) => {
+    const va = get(a);
+    const vb = get(b);
+    if (typeof va === "string" || typeof vb === "string") {
+      return mul * String(va ?? "").localeCompare(String(vb ?? ""), "zh");
+    }
+    return mul * ((Number(va) || 0) - (Number(vb) || 0));
+  });
+}
+
+function sortableTh(scope, key, label) {
+  const cur = tableSortState(scope);
+  const mark = cur.key === key ? (cur.dir === "asc" ? " ▲" : " ▼") : "";
+  const cls = cur.key === key ? "sortable is-sorted" : "sortable";
+  return `<th class="${cls}" data-sort-scope="${scope}" data-sort-key="${key}" title="点击排序">${label}${mark}</th>`;
+}
+
+function adAvgShow(r) {
+  if (r["人均展示成功数"] !== undefined && r["人均展示成功数"] !== null && r["人均展示成功数"] !== "") {
+    return Number(r["人均展示成功数"]) || 0;
+  }
+  return Number(r["人均展示次数"]) || 0;
 }
 
 function isAllToken(v) {
@@ -1470,15 +1512,37 @@ function renderScenarioTable() {
     return;
   }
 
-  $("scenarioTable").innerHTML = list.length
+  const scope = "scenarioTable";
+  const sorted = applyTableSort(list, scope, {
+    project: (s) => s.project || "",
+    viewType: (s) => s.viewType || "",
+    name: (s) => s.name || "",
+    copy: (s) => s.copy || "",
+    showUsers: (s) => s.showUsers,
+    showCount: (s) => s.showCount,
+    avgNotify: (s) => s.avgNotify,
+    clickUsers: (s) => s.clickUsers,
+    clickCount: (s) => s.clickCount,
+    ctrUser: (s) => s.ctrUser,
+    ctrEvent: (s) => s.ctrEvent,
+    avgClick: (s) => s.avgClick
+  });
+
+  $("scenarioTable").innerHTML = sorted.length
     ? `<div class="table-wrap"><table class="table-left"><thead><tr>
-        <th>系列</th><th>查看类型</th><th>通知场景</th>${showCopy ? "<th>文案</th>" : ""}
-        <th>通知用户数</th><th>通知事件数</th>
-        <th>人均通知(通知事件数/day0 first_open)</th>
-        <th>点击用户数</th><th>点击事件数</th>
-        <th>点击率(用户)</th><th>点击率(事件)</th>
-        <th>人均点击</th>
-      </tr></thead><tbody>${list.map((s) => `<tr>
+        ${sortableTh(scope, "project", "系列")}
+        ${sortableTh(scope, "viewType", "查看类型")}
+        ${sortableTh(scope, "name", "通知场景")}
+        ${showCopy ? sortableTh(scope, "copy", "文案") : ""}
+        ${sortableTh(scope, "showUsers", "通知用户数")}
+        ${sortableTh(scope, "showCount", "通知事件数")}
+        ${sortableTh(scope, "avgNotify", "人均通知(通知事件数/day0 first_open)")}
+        ${sortableTh(scope, "clickUsers", "点击用户数")}
+        ${sortableTh(scope, "clickCount", "点击事件数")}
+        ${sortableTh(scope, "ctrUser", "点击率(用户)")}
+        ${sortableTh(scope, "ctrEvent", "点击率(事件)")}
+        ${sortableTh(scope, "avgClick", "人均点击")}
+      </tr></thead><tbody>${sorted.map((s) => `<tr>
         <td>${s.project || "—"}</td><td>${s.viewType || "—"}</td><td>${s.name}</td>
         ${showCopy ? `<td class="copy-cell">${escapeHtml(s.copy || "—")}</td>` : ""}
         <td>${num(s.showUsers)}</td><td>${num(s.showCount)}</td>
@@ -1543,10 +1607,12 @@ function buildAdList(rows, splitBySeries) {
     if (mode === "period") series = r["日期"] || "";
     const k = (splitBySeries ? series + "||" : "") + place + "||" + agency;
     if (!agg[k]) {
-      agg[k] = { project: series, place, agency, shouldShow: 0, success: 0 };
+      agg[k] = { project: series, place, agency, shouldShow: 0, success: 0, avgShow: 0 };
     }
     agg[k].shouldShow += Number(r["广告应展示数"]) || 0;
     agg[k].success += Number(r["广告展示成功数"]) || 0;
+    // 同分母（Day0 first_open）下，各广告位人均可直接相加得到合计人均
+    agg[k].avgShow += adAvgShow(r);
   });
   return Object.values(agg)
     .map((s) => ({
@@ -1591,14 +1657,15 @@ function buildAdMatrix(rows) {
 }
 
 function emptyAdStats() {
-  return { shouldShow: 0, success: 0, successRate: 0 };
+  return { shouldShow: 0, success: 0, successRate: 0, avgShow: 0 };
 }
 
 function adMetricDefs() {
   return [
     { key: "广告应展示数", kind: "abs", get: (s) => s.shouldShow },
     { key: "广告展示成功数", kind: "abs", get: (s) => s.success },
-    { key: "广告展示成功率", kind: "rate", get: (s) => s.successRate }
+    { key: "广告展示成功率", kind: "rate", get: (s) => s.successRate },
+    { key: "人均展示成功数", kind: "avg", get: (s) => s.avgShow }
   ];
 }
 
@@ -1742,11 +1809,25 @@ function renderAdTable() {
     return;
   }
 
-  const list = buildAdList(rows, true);
+  const scope = "adTable";
+  const list = applyTableSort(buildAdList(rows, true), scope, {
+    project: (s) => s.project || "",
+    place: (s) => s.place || "",
+    agency: (s) => s.agency || "",
+    shouldShow: (s) => s.shouldShow,
+    success: (s) => s.success,
+    successRate: (s) => s.successRate,
+    avgShow: (s) => s.avgShow
+  });
   host.innerHTML = list.length
     ? `<div class="table-wrap"><table class="table-left"><thead><tr>
-        <th>系列</th><th>广告位</th><th>上报广告中介</th>
-        <th>广告应展示数</th><th>广告展示成功数</th><th>广告展示成功率</th>
+        ${sortableTh(scope, "project", "系列")}
+        ${sortableTh(scope, "place", "广告位")}
+        ${sortableTh(scope, "agency", "上报广告中介")}
+        ${sortableTh(scope, "shouldShow", "广告应展示数")}
+        ${sortableTh(scope, "success", "广告展示成功数")}
+        ${sortableTh(scope, "successRate", "广告展示成功率")}
+        ${sortableTh(scope, "avgShow", "人均展示成功数")}
       </tr></thead><tbody>${list.map((s) => `<tr>
         <td>${s.project || "—"}</td>
         <td>${s.place || "—"}</td>
@@ -1754,6 +1835,7 @@ function renderAdTable() {
         <td>${num(s.shouldShow)}</td>
         <td>${num(s.success)}</td>
         <td>${pct(s.successRate)}</td>
+        <td>${Number(s.avgShow || 0).toFixed(2)}</td>
       </tr>`).join("")}</tbody></table></div>`
     : '<p class="muted">当前筛选下无广告明细（请确认表格含 panel_ad）</p>';
 }
@@ -2072,14 +2154,15 @@ function matrixFromAdBarsData() {
   if (shouldCompareSeries()) return matrixFromCmpBars($("adBars"));
   const list = buildAdList(rows, false);
   if (!list.length) return null;
-  const out = [["广告位", "上报广告中介", "广告应展示数", "广告展示成功数", "广告展示成功率%"]];
+  const out = [["广告位", "上报广告中介", "广告应展示数", "广告展示成功数", "广告展示成功率%", "人均展示成功数"]];
   list.forEach((s) => {
     out.push([
       s.place || "",
       s.agency || "",
       s.shouldShow || 0,
       s.success || 0,
-      ((Number(s.successRate) || 0) * 100).toFixed(1)
+      ((Number(s.successRate) || 0) * 100).toFixed(1),
+      (Number(s.avgShow) || 0).toFixed(2)
     ]);
   });
   return out;
@@ -2138,6 +2221,17 @@ function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
   bindMultiSelectUI();
   bindExportButtons();
+
+  document.addEventListener("click", (e) => {
+    const th = e.target && e.target.closest && e.target.closest("th.sortable");
+    if (!th) return;
+    const scope = th.getAttribute("data-sort-scope");
+    const key = th.getAttribute("data-sort-key");
+    if (!scope || !key) return;
+    toggleTableSort(scope, key);
+    if (scope === "scenarioTable") renderScenarioTable();
+    else if (scope === "adTable") renderAdTable();
+  });
 
   document.querySelectorAll(".view-btn[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => setDataView(btn.getAttribute("data-view")));
