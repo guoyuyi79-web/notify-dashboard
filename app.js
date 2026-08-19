@@ -169,6 +169,25 @@ function closeAllMsPanels(exceptId) {
   });
 }
 
+/** 文案多选支持模糊搜索 */
+const MS_SEARCH_IDS = new Set(["copyBars", "copyTable"]);
+
+function filterMsOptions(id, query) {
+  const panel = $(msPanelId(id));
+  if (!panel) return;
+  const needle = String(query || "").trim().toLowerCase();
+  panel.querySelectorAll(".ms-option").forEach((label) => {
+    const input = label.querySelector("input");
+    const val = input ? input.value : "";
+    if (!needle || isAllToken(val)) {
+      label.hidden = false;
+      return;
+    }
+    const text = String(label.textContent || "").toLowerCase();
+    label.hidden = !text.includes(needle);
+  });
+}
+
 function fillMultiSelect(id, values, keep) {
   const panel = $(msPanelId(id));
   const btn = $(msToggleId(id));
@@ -211,7 +230,8 @@ function fillMultiSelect(id, values, keep) {
     multiState[id] = new Set(validPrev);
   }
 
-  panel.innerHTML = opts.map((o) => {
+  const needSearch = MS_SEARCH_IDS.has(id);
+  const optionsHtml = opts.map((o) => {
     const checked = multiState[id].has(o.value) ? "checked" : "";
     const safeVal = String(o.value)
       .replace(/&/g, "&amp;")
@@ -224,9 +244,21 @@ function fillMultiSelect(id, values, keep) {
     return `<label class="ms-option"><input type="checkbox" data-ms-id="${id}" value="${safeVal}" ${checked} /><span>${safeLabel}</span></label>`;
   }).join("");
 
+  panel.innerHTML = (needSearch
+    ? `<div class="ms-search-wrap"><input type="search" class="ms-search" placeholder="搜索文案…" autocomplete="off" data-ms-search="${id}" /></div>`
+    : "") + `<div class="ms-options">${optionsHtml}</div>`;
+
   panel.querySelectorAll("input[type=checkbox]").forEach((input) => {
     input.addEventListener("change", () => onMsCheckboxChange(id, input));
   });
+  if (needSearch) {
+    const search = panel.querySelector(`[data-ms-search="${id}"]`);
+    if (search) {
+      search.addEventListener("input", () => filterMsOptions(id, search.value));
+      search.addEventListener("click", (e) => e.stopPropagation());
+      search.addEventListener("keydown", (e) => e.stopPropagation());
+    }
+  }
   updateMsToggleLabel(id);
 }
 
@@ -296,6 +328,14 @@ function bindMultiSelectUI() {
       closeAllMsPanels(id);
       panel.hidden = !open;
       btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!panel.hidden && MS_SEARCH_IDS.has(id)) {
+        const search = panel.querySelector(`[data-ms-search="${id}"]`);
+        if (search) {
+          search.value = "";
+          filterMsOptions(id, "");
+          setTimeout(() => search.focus(), 0);
+        }
+      }
     });
   });
   document.addEventListener("click", (e) => {
@@ -324,8 +364,33 @@ function wantsBaselineCompare() {
   return baselineValue() !== NONE;
 }
 
+/** 开启基准且（主对比维或多选国家/版本/品牌拆列后）至少 2 列时，场景/广告也走分列对比 */
 function shouldCompareSeries() {
-  return wantsBaselineCompare() && seriesLabels(compareByValue()).length > 1;
+  return wantsBaselineCompare() && plannedSeriesKeys({ expandSecondary: true }).length > 1;
+}
+
+/** 行归属的系列键：与总览 KPI 的 plannedSeriesKeys / overviewBySeries 一致 */
+function seriesKeyForRow(r) {
+  if (!r) return "";
+  const mode = compareByValue();
+  const primary = seriesLabels(mode);
+  const expands = secondaryExpandDims(mode);
+  let label = "";
+  if (mode === "version") label = r["版本"] || "全部";
+  else if (mode === "period") label = String(r["日期"] || "");
+  else label = r["项目代号"] || "";
+  if (!primary.includes(label)) return "";
+  const combo = {};
+  for (let i = 0; i < expands.length; i++) {
+    const d = expands[i];
+    let v = "";
+    if (d.dim === "country") v = String(r["国家"] || "");
+    else if (d.dim === "version") v = String(r["版本"] || "全部");
+    else if (d.dim === "brand") v = String(r["设备品牌"] || "全部");
+    if (!d.values.includes(v)) return "";
+    combo[d.dim] = v;
+  }
+  return makeExpandedColKey(label, primary.length, expands, combo);
 }
 
 function globalFilters() {
@@ -346,7 +411,7 @@ function globalFiltersDisplay() {
     version: formatMultiLabel(g.versions),
     country: formatMultiLabel(g.countries),
     brand: formatMultiLabel(g.brands),
-    period: g.periods.length ? formatMultiLabel(g.periods) : "—"
+    period: g.periods.length ? formatMultiLabel(g.periods) : "全部"
   };
 }
 
@@ -470,37 +535,19 @@ function preferSummaryRows(rows, g) {
   return out;
 }
 
-function pickOverviewRow(rows, g) {
-  if (!rows.length) return null;
-  const countries = g.countries || ["全部"];
-  const brands = g.brands || ["全部"];
-  const versions = g.versions || ["全部"];
-  const countryAll = countries.some(isAllToken) || countries.includes("全部");
-  const brandAll = brands.some(isAllToken) || brands.includes("全部");
-  const versionAll = versions.some(isAllToken) || versions.includes("全部");
-
-  if (!countryAll && !brandAll && !versionAll) return rows[0];
-
-  const exact = rows.find((r) =>
-    (countryAll ? r["国家"] === "全部" : true)
-    && (brandAll ? (r["设备品牌"] || "全部") === "全部" : true)
-    && (versionAll ? (r["版本"] || "全部") === "全部" : true)
-  );
-  if (exact) return exact;
-
-  const all = rows.find((r) =>
-    r["国家"] === "全部"
-    && (r["设备品牌"] || "全部") === "全部"
-    && (r["版本"] || "全部") === "全部"
-  );
-  if (all) return all;
-
+/** 多行总览绝对量相加，比率按合计重算；跨多个日期时「日期」标为全部 */
+function aggregateOverviewMetricRows(rows, dimLabels) {
+  if (!rows || !rows.length) return null;
+  if (rows.length === 1) return rows[0];
   const sumKeys = ["总活跃用户", "授权数", "发送通知用户数", "发通知总数", "点击用户数", "点击事件数"];
+  const labels = dimLabels || {};
+  const dates = [...new Set(rows.map((r) => String(r["日期"] || "")))];
   const out = {
     ...rows[0],
-    国家: countryAll ? "全部" : (rows[0]["国家"] || "全部"),
-    设备品牌: brandAll ? "全部" : (rows[0]["设备品牌"] || "全部"),
-    版本: versionAll ? "全部" : (rows[0]["版本"] || "全部")
+    国家: labels.国家 != null ? labels.国家 : (rows[0]["国家"] || "全部"),
+    设备品牌: labels.设备品牌 != null ? labels.设备品牌 : (rows[0]["设备品牌"] || "全部"),
+    版本: labels.版本 != null ? labels.版本 : (rows[0]["版本"] || "全部"),
+    日期: dates.length > 1 ? "全部" : (dates[0] || rows[0]["日期"] || "")
   };
   sumKeys.forEach((k) => { out[k] = 0; });
   rows.forEach((r) => sumKeys.forEach((k) => { out[k] += Number(r[k]) || 0; }));
@@ -534,6 +581,61 @@ function pickOverviewRow(rows, g) {
   return out;
 }
 
+/** 单日期内：按国家/品牌/版本选汇总行或加总 */
+function pickOverviewRowForSinglePeriod(rows, g) {
+  if (!rows.length) return null;
+  const countries = g.countries || ["全部"];
+  const brands = g.brands || ["全部"];
+  const versions = g.versions || ["全部"];
+  const countryAll = countries.some(isAllToken) || countries.includes("全部");
+  const brandAll = brands.some(isAllToken) || brands.includes("全部");
+  const versionAll = versions.some(isAllToken) || versions.includes("全部");
+
+  if (!countryAll && !brandAll && !versionAll) return rows[0];
+
+  const exact = rows.find((r) =>
+    (countryAll ? r["国家"] === "全部" : true)
+    && (brandAll ? (r["设备品牌"] || "全部") === "全部" : true)
+    && (versionAll ? (r["版本"] || "全部") === "全部" : true)
+  );
+  if (exact) return exact;
+
+  const all = rows.find((r) =>
+    r["国家"] === "全部"
+    && (r["设备品牌"] || "全部") === "全部"
+    && (r["版本"] || "全部") === "全部"
+  );
+  if (all) return all;
+
+  return aggregateOverviewMetricRows(rows, {
+    国家: countryAll ? "全部" : (rows[0]["国家"] || "全部"),
+    设备品牌: brandAll ? "全部" : (rows[0]["设备品牌"] || "全部"),
+    版本: versionAll ? "全部" : (rows[0]["版本"] || "全部")
+  });
+}
+
+/**
+ * 总览取数：先按日期各取一行，日期区间为「全部」或多选时再跨日期加总。
+ * （绝对量相加，比率用合计重算；时间周期展示为「全部」）
+ */
+function pickOverviewRow(rows, g) {
+  if (!rows.length) return null;
+  const byDate = new Map();
+  rows.forEach((r) => {
+    const d = String(r["日期"] || "");
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(r);
+  });
+  const perDate = [];
+  byDate.forEach((dateRows) => {
+    const one = pickOverviewRowForSinglePeriod(dateRows, g);
+    if (one) perDate.push(one);
+  });
+  if (!perDate.length) return null;
+  if (perDate.length === 1) return perDate[0];
+  return aggregateOverviewMetricRows(perDate);
+}
+
 function dimContextHtml(gDisp) {
   const mode = compareByValue();
   const parts = [
@@ -541,7 +643,7 @@ function dimContextHtml(gDisp) {
     `品牌 ${gDisp.brand || "全部"}`
   ];
   if (mode !== "version") parts.push(`版本 ${gDisp.version || "全部"}`);
-  if (mode !== "period") parts.push(`时间周期 ${gDisp.period || "—"}`);
+  if (mode !== "period") parts.push(`时间周期 ${gDisp.period || "全部"}`);
   if (gDisp.project && gDisp.project !== "全部" && mode !== "project") {
     parts.unshift(`项目 ${gDisp.project}`);
   }
@@ -566,7 +668,10 @@ function seriesDimLine(col) {
     parts.push(`版本 ${gDisp.version !== "全部" ? gDisp.version : (r["版本"] || "全部")}`);
   }
   if (mode !== "period") {
-    parts.push(`时间周期 ${r["日期"] || gDisp.period || "—"}`);
+    const periodLabel = (gDisp.period && gDisp.period !== "—")
+      ? gDisp.period
+      : (r["日期"] || "全部");
+    parts.push(`时间周期 ${periodLabel}`);
   }
   return parts.join(" · ");
 }
@@ -834,8 +939,14 @@ function buildScenarioList(rows, splitBySeries, cohortDay, scope) {
     const viewType = r["查看类型"] || "";
     const copy = String(r["文案"] || "").trim();
     let series = r["项目代号"] || "";
-    if (mode === "version") series = r["版本"] || "全部";
-    if (mode === "period") series = r["日期"] || "";
+    if (splitBySeries) {
+      series = seriesKeyForRow(r);
+      if (!series) return;
+    } else if (mode === "version") {
+      series = r["版本"] || "全部";
+    } else if (mode === "period") {
+      series = r["日期"] || "";
+    }
 
     let name;
     let k;
@@ -871,12 +982,13 @@ function buildScenarioList(rows, splitBySeries, cohortDay, scope) {
     t.clickCount += Number(r["点击事件数"]) || 0;
   });
   const baseBySeries = {};
-  const overviewCols = overviewByProject(
+  const overviewCols = overviewBySeries(
     cohortDay || ($("cohortDayScenarioTable") && $("cohortDayScenarioTable").value) || "",
-    scope || "scenarioTable"
+    scope || "scenarioTable",
+    { expandSecondary: true }
   );
   overviewCols.forEach((c) => {
-    baseBySeries[c.project] = Number(c.row["总活跃用户"]) || 0;
+    baseBySeries[c.key] = Number(c.row["总活跃用户"]) || 0;
   });
   const baseFallback = overviewCols.length === 1 ? Number(overviewCols[0].row["总活跃用户"]) || 0 : 0;
 
@@ -919,7 +1031,7 @@ function buildScenarioMatrix(rows, cohortDay, scope, sortMetric) {
     map[key].byProject[s.project || ""] = s;
     if (!map[key].copy && s.copy) map[key].copy = s.copy;
   });
-  const projects = orderSeries(seriesLabels(compareByValue()));
+  const projects = orderSeries(plannedSeriesKeys({ expandSecondary: true }));
   const baseline = baselineValue();
   const metricKey = sortMetric === "ctrEvent" ? "ctrEvent" : "ctrUser";
   const rowsOut = Object.values(map).sort((a, b) => {
@@ -1028,7 +1140,15 @@ function dimCellsHtml(row, gShow, hide) {
   const country = (row && row["国家"]) || gShow.country || "全部";
   const brand = (row && (row["设备品牌"] || "全部")) || gShow.brand || "全部";
   const version = (row && (row["版本"] || "全部")) || gShow.version || "全部";
-  const period = (row && row["日期"]) || gShow.period || "—";
+  const uiPeriods = (globalFilters().periods || []);
+  let period = "全部";
+  if (!uiPeriods.length) {
+    period = "全部";
+  } else if (uiPeriods.length > 1) {
+    period = formatMultiLabel(uiPeriods);
+  } else {
+    period = (row && row["日期"]) || uiPeriods[0] || "全部";
+  }
   const parts = [];
   if (!h.country) parts.push(`<td>${country}</td>`);
   if (!h.brand) parts.push(`<td>${brand}</td>`);
@@ -1099,6 +1219,12 @@ function aggregateOverviewCols(cols) {
   if (!gMerged.versions.length) gMerged.versions = ["全部"];
   if (!gMerged.countries.length) gMerged.countries = ["全部"];
   if (!gMerged.brands.length) gMerged.brands = ["全部"];
+
+  const dates = [...new Set(cols.map((c) => String((c.row && c.row["日期"]) || "")).filter(Boolean))];
+  if (dates.length > 1 || (!gMerged.periods.length && dates.length)) {
+    row["日期"] = dates.length > 1 ? "全部" : dates[0];
+  }
+  if (!gMerged.periods.length) gMerged.periods = [];
 
   return {
     key: "汇总",
@@ -1436,7 +1562,7 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
               ${renderTrackedBar(`focus-${barTone}`, pctVal, pctVal.toFixed(1), zero)}
             </div>
           </div>`;
-        }).join("")
+      }).join("")
       : '<p class="muted cmp-empty">当前筛选下无场景点击率</p>';
     return;
   }
@@ -1603,8 +1729,14 @@ function buildAdList(rows, splitBySeries) {
     const place = String(r["广告位"] || "全部").trim() || "全部";
     const agency = String(r["上报广告中介"] || "全部").trim() || "全部";
     let series = r["项目代号"] || "";
-    if (mode === "version") series = r["版本"] || "全部";
-    if (mode === "period") series = r["日期"] || "";
+    if (splitBySeries) {
+      series = seriesKeyForRow(r);
+      if (!series) return;
+    } else if (mode === "version") {
+      series = r["版本"] || "全部";
+    } else if (mode === "period") {
+      series = r["日期"] || "";
+    }
     const k = (splitBySeries ? series + "||" : "") + place + "||" + agency;
     if (!agg[k]) {
       agg[k] = { project: series, place, agency, shouldShow: 0, success: 0, avgShow: 0 };
@@ -1641,7 +1773,7 @@ function buildAdMatrix(rows) {
     if (!map[key]) map[key] = { key, place: s.place, agency: s.agency, name: s.name, byProject: {} };
     map[key].byProject[s.project || ""] = s;
   });
-  const projects = orderSeries(seriesLabels(compareByValue()));
+  const projects = orderSeries(plannedSeriesKeys({ expandSecondary: true }));
   const baseline = baselineValue();
   const rowsOut = Object.values(map).sort((a, b) => {
     const base = baseline !== NONE ? baseline : projects[0];
