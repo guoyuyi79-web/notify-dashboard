@@ -570,6 +570,55 @@ th.sortable.is-sorted { color: var(--ink); font-weight: 600; }
 }
 .muted { color: var(--muted); font-size: 12px; }
 .tip { margin: 10px 0 0; }
+.metric-formula-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: rgba(40, 30, 16, 0.28);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  text-align: left;
+}
+.metric-formula-btn:hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+.formula-pop {
+  position: fixed;
+  z-index: 80;
+  max-width: min(340px, calc(100vw - 24px));
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(40, 30, 16, 0.14);
+  color: var(--ink);
+  line-height: 1.45;
+}
+.formula-pop-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+.formula-pop-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 8px 0 2px;
+}
+.formula-pop-formula {
+  font-size: 13px;
+  font-weight: 600;
+}
+.formula-pop-tip {
+  font-size: 12px;
+  color: var(--muted);
+}
 .pill { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 12px; background: #fff; }
 .pill.ok { background: #e8f6ec; border-color: #b9dfc4; color: var(--ok); }
 .pill.err { background: #fdecec; border-color: #f0c0c0; color: var(--danger); }

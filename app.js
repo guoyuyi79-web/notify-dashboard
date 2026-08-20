@@ -893,6 +893,133 @@ function formatKpiValue(m) {
   return Number(m.value).toFixed(2);
 }
 
+/** 总览 KPI 指标公式（点击指标名浮层展示） */
+const KPI_FORMULAS = {
+  "总活跃用户": {
+    formula: "Day0 first_open（或 config 配置的活跃口径）",
+    tip: "总览多数比率的分母；与所选队列天、日期区间对应"
+  },
+  "授权数": {
+    formula: "授权成功用户数",
+    tip: "授权成功事件的去重用户"
+  },
+  "发送通知用户": {
+    formula: "通知展示用户数",
+    tip: "通知展示事件的去重用户"
+  },
+  "点击用户": {
+    formula: "通知点击用户数",
+    tip: "通知点击事件的去重用户"
+  },
+  "授权率": {
+    formula: "授权数 ÷ 总活跃用户",
+    tip: "授权渗透"
+  },
+  "通知渗透率": {
+    formula: "发送通知用户 ÷ 总活跃用户",
+    tip: "有多少活跃用户收到过通知"
+  },
+  "人均通知数": {
+    formula: "发通知总数 ÷ 总活跃用户",
+    tip: "通知展示事件数相对总活跃"
+  },
+  "点击率-用户": {
+    formula: "点击用户 ÷ 发送通知用户",
+    tip: "用户口径 CTR"
+  },
+  "点击率-事件": {
+    formula: "点击事件数 ÷ 发通知总数",
+    tip: "事件口径 CTR"
+  },
+  "人均点击": {
+    formula: "点击事件数 ÷ 点击用户",
+    tip: "平均每个点击用户点了几次"
+  }
+};
+
+function lookupKpiFormula(key) {
+  const k = String(key || "").trim();
+  if (!k) return null;
+  if (KPI_FORMULAS[k]) return KPI_FORMULAS[k];
+  if (/^Day\s*\d+\s*留存$/i.test(k) || /留存$/.test(k)) {
+    return {
+      formula: "DayN 活跃用户 ÷ Day0 first_open",
+      tip: "当前队列天相对 Day0 的留存率"
+    };
+  }
+  if (/卸载率/.test(k)) {
+    return {
+      formula: "卸载用户 ÷ 总活跃用户",
+      tip: "卸载事件用户相对总活跃"
+    };
+  }
+  return null;
+}
+
+let formulaPopKey = null;
+
+function ensureFormulaPop() {
+  let el = document.getElementById("formulaPop");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "formulaPop";
+    el.className = "formula-pop";
+    el.hidden = true;
+    el.setAttribute("role", "dialog");
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function closeFormulaPop() {
+  const el = document.getElementById("formulaPop");
+  if (el) el.hidden = true;
+  formulaPopKey = null;
+}
+
+function toggleFormulaPop(btn) {
+  const key = btn.getAttribute("data-metric-key") || "";
+  const info = lookupKpiFormula(key);
+  if (!info) return;
+  const el = ensureFormulaPop();
+  if (formulaPopKey === key && !el.hidden) {
+    closeFormulaPop();
+    return;
+  }
+  el.innerHTML =
+    `<div class="formula-pop-title">${escapeHtml(key)}</div>` +
+    `<div class="formula-pop-label">公式</div>` +
+    `<div class="formula-pop-formula">${escapeHtml(info.formula)}</div>` +
+    (info.tip
+      ? `<div class="formula-pop-label">说明</div><div class="formula-pop-tip">${escapeHtml(info.tip)}</div>`
+      : "");
+  el.hidden = false;
+  formulaPopKey = key;
+
+  const rect = btn.getBoundingClientRect();
+  const popW = Math.min(340, Math.max(220, window.innerWidth - 24));
+  el.style.width = `${popW}px`;
+  // 优先右侧，空间不够则下方
+  let left = rect.right + 10;
+  let top = rect.top;
+  if (left + popW > window.innerWidth - 12) {
+    left = Math.max(12, Math.min(rect.left, window.innerWidth - popW - 12));
+    top = rect.bottom + 8;
+  }
+  const approxH = 120;
+  if (top + approxH > window.innerHeight - 8) {
+    top = Math.max(8, window.innerHeight - approxH - 8);
+  }
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
+
+function metricLabelHtml(key) {
+  const text = String(key || "");
+  if (!lookupKpiFormula(text)) return escapeHtml(text);
+  return `<button type="button" class="metric-formula-btn" data-metric-key="${escapeHtml(text)}">${escapeHtml(text)}</button>`;
+}
+
 function formatDelta(m, baseM) {
   if (!baseM) return "";
   const a = Number(m.value) || 0;
@@ -1245,6 +1372,7 @@ function renderKpi() {
   if (!cols.length) {
     $("stats").innerHTML = '<p class="muted">当前条件下暂无 KPI</p>';
     renderRateAvgBars([], []);
+    closeFormulaPop();
     return;
   }
 
@@ -1285,10 +1413,11 @@ function renderKpi() {
       <div class="table-wrap"><table class="compare-table">
         <thead><tr><th>指标</th>${dimHead}<th class="num">${colLabel}</th></tr></thead>
         <tbody>${metricSets[0].map((m) =>
-          `<tr><td>${m.key}</td>${dimCellsHtml(dimSample, gShow, hideDims)}<td class="num">${formatKpiValue(m)}</td></tr>`
+          `<tr><td>${metricLabelHtml(m.key)}</td>${dimCellsHtml(dimSample, gShow, hideDims)}<td class="num">${formatKpiValue(m)}</td></tr>`
         ).join("")}</tbody>
       </table></div>`;
     renderRateAvgBars(cols, metricSets);
+    closeFormulaPop();
     return;
   }
 
@@ -1316,11 +1445,12 @@ function renderKpi() {
         cells.push(`<td class="num muted">—</td>`);
       }
     });
-    return `<tr><td>${m0.key}</td>${dimCellsHtml(dimSample, gShow, hideDims)}${cells.join("")}</tr>`;
+    return `<tr><td>${metricLabelHtml(m0.key)}</td>${dimCellsHtml(dimSample, gShow, hideDims)}${cells.join("")}</tr>`;
   }).join("");
 
   $("stats").innerHTML = `${wideTip}<div class="table-wrap"><table class="compare-table"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
   renderRateAvgBars(cols, metricSets);
+  closeFormulaPop();
 }
 
 function metricUnitLabel(m) {
@@ -2427,6 +2557,22 @@ function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
   bindMultiSelectUI();
   bindExportButtons();
+
+  document.addEventListener("click", (e) => {
+    const formulaBtn = e.target && e.target.closest && e.target.closest(".metric-formula-btn");
+    if (formulaBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFormulaPop(formulaBtn);
+      return;
+    }
+    if (!(e.target && e.target.closest && e.target.closest("#formulaPop"))) {
+      closeFormulaPop();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeFormulaPop();
+  });
 
   document.addEventListener("click", (e) => {
     const th = e.target && e.target.closest && e.target.closest("th.sortable");
