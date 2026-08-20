@@ -2206,15 +2206,89 @@ function downloadCsv(filename, matrix) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * 把 HTML 表展开成矩形矩阵（处理 rowspan/colspan），避免导出 CSV 因合并单元格缺列而错位。
+ */
 function matrixFromTable(table) {
   if (!table) return null;
-  const rows = [];
-  table.querySelectorAll("tr").forEach((tr) => {
-    const cells = [...tr.querySelectorAll("th,td")].map((td) =>
-      String(td.innerText || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim()
-    );
-    if (cells.some((c) => c !== "")) rows.push(cells);
+  const trs = [...table.querySelectorAll("tr")];
+  if (!trs.length) return null;
+
+  // 预估列数：取表头单元格 colspan 合计，或首行
+  let colCount = 0;
+  const headRow = table.querySelector("thead tr") || trs[0];
+  if (headRow) {
+    [...headRow.querySelectorAll("th,td")].forEach((cell) => {
+      colCount += Math.max(1, parseInt(cell.getAttribute("colspan") || "1", 10) || 1);
+    });
+  }
+  if (!colCount) colCount = 1;
+
+  const grid = [];
+  const occupy = []; // occupy[r][c] = true 已被上方 rowspan 占用
+
+  const ensureRow = (r) => {
+    while (grid.length <= r) {
+      grid.push([]);
+      occupy.push([]);
+    }
+    while (grid[r].length < colCount) grid[r].push("");
+    while (occupy[r].length < colCount) occupy[r].push(false);
+  };
+
+  const place = (r, c, text, rs, cs) => {
+    ensureRow(r);
+    // 扩列
+    const need = c + cs;
+    if (need > colCount) {
+      const extra = need - colCount;
+      colCount = need;
+      grid.forEach((row, ri) => {
+        for (let k = 0; k < extra; k++) {
+          row.push("");
+          occupy[ri].push(false);
+        }
+      });
+    }
+    for (let dr = 0; dr < rs; dr++) {
+      ensureRow(r + dr);
+      for (let dc = 0; dc < cs; dc++) {
+        const rr = r + dr;
+        const cc = c + dc;
+        if (dr === 0 && dc === 0) {
+          grid[rr][cc] = text;
+        } else {
+          // 合并格在 CSV 中重复填写同一文案，保证每行列数对齐且可读
+          grid[rr][cc] = text;
+        }
+        occupy[rr][cc] = true;
+      }
+    }
+  };
+
+  trs.forEach((tr, r) => {
+    ensureRow(r);
+    let c = 0;
+    [...tr.querySelectorAll("th,td")].forEach((cell) => {
+      while (c < colCount && occupy[r][c]) c += 1;
+      const text = String(cell.innerText || "")
+        .replace(/\u00a0/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const rs = Math.max(1, parseInt(cell.getAttribute("rowspan") || "1", 10) || 1);
+      const cs = Math.max(1, parseInt(cell.getAttribute("colspan") || "1", 10) || 1);
+      place(r, c, text, rs, cs);
+      c += cs;
+    });
   });
+
+  const rows = grid
+    .map((row) => {
+      const out = row.slice(0, colCount);
+      while (out.length < colCount) out.push("");
+      return out;
+    })
+    .filter((row) => row.some((c) => c !== ""));
   return rows.length ? rows : null;
 }
 
