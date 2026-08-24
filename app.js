@@ -37,6 +37,11 @@ function num(v) {
   if (!Number.isFinite(n)) return "—";
   return Math.round(n).toLocaleString("en-US");
 }
+function avg(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+}
 
 function tableSortState(scope) {
   return state.tableSort[scope] || { key: null, dir: "desc" };
@@ -1926,7 +1931,7 @@ function renderFeatureTable() {
   host.innerHTML = `<div class="table-wrap"><table class="table-left"><thead><tr>
     <th>功能显示名</th>
     <th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th>
-    <th class="num">功能用户数</th><th class="num">总活跃用户</th><th class="num">使用率</th>
+    <th class="num">功能用户数</th><th class="num">点击数</th><th class="num">总活跃用户</th><th class="num">使用率</th><th class="num">人均使用次数</th>
   </tr></thead><tbody>${rows.map((r) => `<tr>
     <td>${escapeHtml(r["功能显示名"] || "—")}</td>
     <td>${escapeHtml(r["国家"] || "全部")}</td>
@@ -1934,8 +1939,10 @@ function renderFeatureTable() {
     <td>${escapeHtml(r["版本"] || "全部")}</td>
     <td>${escapeHtml(r["日期"] || "—")}</td>
     <td class="num">${num(r["功能用户数"])}</td>
+    <td class="num">${num(r["点击数"])}</td>
     <td class="num">${num(r["总活跃用户"])}</td>
     <td class="num">${pct(r["使用率"])}</td>
+    <td class="num">${avg(r["人均使用次数"])}</td>
   </tr>`).join("")}</tbody></table></div>`;
 }
 

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260824b" />
+  <link rel="stylesheet" href="/styles.css?v=20260824c" />
 </head>
 <body>
   <div class="wrap">
@@ -222,7 +222,7 @@
         </div>
         <div id="dimContextFunnel" class="dim-context muted"></div>
         <div id="funnelTable" class="table-wrap"></div>
-        <p class="muted tip">步骤用户数 = 该步事件 activeUsers；相对首步 / 相对上一步转化率。配置见 Sheet <code>config_features</code>（配置类型=产品漏斗）。</p>
+        <p class="muted tip">闭包漏斗（须从第 1 步进入）：步骤用户数来自 GA4 探索漏斗 API；相对首步 / 相对上一步转化率。配置见 Sheet <code>config_features</code>（配置类型=产品漏斗）。</p>
       </section>
 
       <section class="panel" id="panelFeature">
@@ -234,11 +234,11 @@
         </div>
         <div id="dimContextFeature" class="dim-context muted"></div>
         <div id="featureTable" class="table-wrap"></div>
-        <p class="muted tip">使用率 = 功能事件 activeUsers ÷ 总活跃（跟 config_filter 总活跃口径）。配置见 <code>config_features</code>（配置类型=核心功能）。</p>
+        <p class="muted tip">使用率 = 功能用户数 ÷ 总活跃；人均使用次数 = 点击数(eventCount) ÷ 总活跃。配置见 <code>config_features</code>（配置类型=核心功能）。</p>
       </section>
     </div>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260824b"></script>
+  <script src="/app.js?v=20260824c"></script>
 </body>
 </html>
