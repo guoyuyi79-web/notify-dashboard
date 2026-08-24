@@ -570,6 +570,7 @@ th.sortable.is-sorted { color: var(--ink); font-weight: 600; }
 }
 .muted { color: var(--muted); font-size: 12px; }
 .tip { margin: 10px 0 0; }
+.warn-tip { color: #b45309; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 8px 10px; }
 .metric-formula-btn {
   appearance: none;
   border: 0;

@@ -1401,6 +1401,7 @@ function renderKpi() {
   setDimContext("dimContextOverview", gShow);
   const compareOn = wantsBaselineCompare();
   const hideDims = expandedDimsActive(compareByValue());
+  const planned = plannedSeriesKeys({ expandSecondary: true });
 
   let cols = overviewBySeries(day, "overview", { expandSecondary: true });
   if (!cols.length) {
@@ -1437,13 +1438,21 @@ function renderKpi() {
   const compareCols = compareOn ? cols.filter((c) => c.key !== baseline) : [];
   const dimHead = dimHeadersHtml(hideDims);
   const dimSample = cols[0].row;
+  const haveKeys = new Set(cols.map((c) => c.key));
+  const missingKeys = compareOn ? planned.filter((k) => !haveKeys.has(k)) : [];
+  const missTip = missingKeys.length
+    ? `<p class="muted tip warn-tip">已选对比，但当前筛选下无数据的系列：<strong>${missingKeys.map(escapeHtml).join("、")}</strong>。请确认已「加载并清洗」对应项目表格，且该项目含相同日期区间 / 国家 / 队列天。</p>`
+    : "";
   const wideTip = cols.length > 12
     ? `<p class="muted tip">当前 KPI 已分 ${cols.length} 列，建议收窄国家/版本/设备多选。</p>`
     : "";
 
   if (!compareOn || cols.length === 1) {
     const colLabel = cols[0].key === "汇总" ? "汇总" : cols[0].key;
-    $("stats").innerHTML = `${wideTip}
+    const needCompareTip = compareOn && cols.length === 1
+      ? `<p class="muted tip warn-tip">对比已开启，但只有 <strong>${escapeHtml(colLabel)}</strong> 有数据，无法分列对比。${missingKeys.length ? "" : "请检查是否只加载了一个项目表格。"}</p>`
+      : "";
+    $("stats").innerHTML = `${wideTip}${missTip}${needCompareTip}
       <div class="table-wrap"><table class="compare-table">
         <thead><tr><th>指标</th>${dimHead}<th class="num">${colLabel}</th></tr></thead>
         <tbody>${metricSets[0].map((m) =>
@@ -1482,7 +1491,7 @@ function renderKpi() {
     return `<tr><td>${metricLabelHtml(m0.key)}</td>${dimCellsHtml(dimSample, gShow, hideDims)}${cells.join("")}</tr>`;
   }).join("");
 
-  $("stats").innerHTML = `${wideTip}<div class="table-wrap"><table class="compare-table"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+  $("stats").innerHTML = `${wideTip}${missTip}<div class="table-wrap"><table class="compare-table"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
   renderRateAvgBars(cols, metricSets);
   closeFormulaPop();
 }
