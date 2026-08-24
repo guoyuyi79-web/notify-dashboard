@@ -307,7 +307,7 @@ function cleanFunnel(rows) {
 function cleanFeature(rows) {
   return (rows || []).map((r) => {
     const o = { ...r };
-    ['功能用户数', '总活跃用户'].forEach((k) => {
+    ['功能用户数', '点击数', '总活跃用户', '人均使用次数'].forEach((k) => {
       if (o[k] !== undefined && o[k] !== '') o[k] = Number(String(o[k]).replace(/,/g, '')) || 0;
     });
     const parseRate = (raw) => {
@@ -324,6 +324,11 @@ function cleanFeature(rows) {
       return n;
     };
     o['使用率'] = parseRate(o['使用率']);
+    if (o['人均使用次数'] === undefined || o['人均使用次数'] === '') {
+      const clicks = Number(o['点击数']) || 0;
+      const base = Number(o['总活跃用户']) || 0;
+      o['人均使用次数'] = base > 0 ? clicks / base : 0;
+    }
     return o;
   });
 }
