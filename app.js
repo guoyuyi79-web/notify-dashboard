@@ -1845,6 +1845,100 @@ function adsForScope(cohortDay) {
   );
 }
 
+function syncFunnelNameSelect() {
+  const el = $("funnelNameSelect");
+  if (!el) return;
+  const names = ((state.data && state.data.meta && state.data.meta.funnelNames) || [])
+    .slice()
+    .sort((a, b) => String(a).localeCompare(String(b), "zh"));
+  const fromData = [...new Set((state.data.funnel || []).map((r) => String(r["漏斗名称"] || "").trim()).filter(Boolean))];
+  const list = [...new Set(names.concat(fromData))].sort((a, b) => String(a).localeCompare(String(b), "zh"));
+  const prev = el.value;
+  fillSelect(el, list.length ? list.map((n) => ({ value: n, label: n })) : [{ value: "", label: "—" }], true);
+  if (prev && [...el.options].some((o) => o.value === prev)) el.value = prev;
+  else if (list.length) el.value = list[0];
+}
+
+function funnelRowsForScope() {
+  if (!state.data) return [];
+  const g = globalFilters();
+  const name = ($("funnelNameSelect") && $("funnelNameSelect").value) || "";
+  return preferSummaryRows(
+    (state.data.funnel || []).filter((r) =>
+      passGlobal(r, g)
+      && (!name || String(r["漏斗名称"] || "") === name)
+    ),
+    g
+  ).sort((a, b) => {
+    const fc = String(a["漏斗名称"] || "").localeCompare(String(b["漏斗名称"] || ""), "zh");
+    if (fc) return fc;
+    const sc = (Number(a["步骤序号"]) || 0) - (Number(b["步骤序号"]) || 0);
+    if (sc) return sc;
+    return String(a["国家"] || "").localeCompare(String(b["国家"] || ""), "zh");
+  });
+}
+
+function featureRowsForScope() {
+  if (!state.data) return [];
+  const g = globalFilters();
+  return preferSummaryRows(
+    (state.data.feature || []).filter((r) => passGlobal(r, g)),
+    g
+  ).sort((a, b) => (Number(b["使用率"]) || 0) - (Number(a["使用率"]) || 0));
+}
+
+function renderFunnelTable() {
+  const host = $("funnelTable");
+  if (!host) return;
+  setDimContext("dimContextFunnel", globalFiltersDisplay());
+  const rows = funnelRowsForScope();
+  if (!rows.length) {
+    host.innerHTML = '<p class="muted">当前筛选下无漏斗数据（请确认 Sheet 含 panel_funnel，且 config_features 已启用产品漏斗）</p>';
+    return;
+  }
+  host.innerHTML = `<div class="table-wrap"><table class="table-left"><thead><tr>
+    <th>漏斗名称</th><th>步骤</th><th>步骤显示名</th>
+    <th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th>
+    <th class="num">步骤用户数</th><th class="num">相对首步</th><th class="num">相对上一步</th>
+  </tr></thead><tbody>${rows.map((r) => `<tr>
+    <td>${escapeHtml(r["漏斗名称"] || "—")}</td>
+    <td>${num(r["步骤序号"])}</td>
+    <td>${escapeHtml(r["步骤显示名"] || "—")}</td>
+    <td>${escapeHtml(r["国家"] || "全部")}</td>
+    <td>${escapeHtml(r["设备品牌"] || "全部")}</td>
+    <td>${escapeHtml(r["版本"] || "全部")}</td>
+    <td>${escapeHtml(r["日期"] || "—")}</td>
+    <td class="num">${num(r["步骤用户数"])}</td>
+    <td class="num">${pct(r["相对首步转化率"])}</td>
+    <td class="num">${pct(r["相对上一步转化率"])}</td>
+  </tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderFeatureTable() {
+  const host = $("featureTable");
+  if (!host) return;
+  setDimContext("dimContextFeature", globalFiltersDisplay());
+  const rows = featureRowsForScope();
+  if (!rows.length) {
+    host.innerHTML = '<p class="muted">当前筛选下无核心功能数据（请确认 Sheet 含 panel_feature，且 config_features 已启用核心功能）</p>';
+    return;
+  }
+  host.innerHTML = `<div class="table-wrap"><table class="table-left"><thead><tr>
+    <th>功能显示名</th>
+    <th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th>
+    <th class="num">功能用户数</th><th class="num">总活跃用户</th><th class="num">使用率</th>
+  </tr></thead><tbody>${rows.map((r) => `<tr>
+    <td>${escapeHtml(r["功能显示名"] || "—")}</td>
+    <td>${escapeHtml(r["国家"] || "全部")}</td>
+    <td>${escapeHtml(r["设备品牌"] || "全部")}</td>
+    <td>${escapeHtml(r["版本"] || "全部")}</td>
+    <td>${escapeHtml(r["日期"] || "—")}</td>
+    <td class="num">${num(r["功能用户数"])}</td>
+    <td class="num">${num(r["总活跃用户"])}</td>
+    <td class="num">${pct(r["使用率"])}</td>
+  </tr>`).join("")}</tbody></table></div>`;
+}
+
 function adLabel(place, agency) {
   const p = String(place || "全部").trim() || "全部";
   const a = String(agency || "全部").trim() || "全部";
@@ -2103,11 +2197,13 @@ function renderAdTable() {
 }
 
 function applyDataView() {
-  const view = state.dataView === "ad" ? "ad" : "notify";
+  const view = state.dataView === "ad" ? "ad" : state.dataView === "product" ? "product" : "notify";
   const notifyEl = $("viewNotify");
   const adEl = $("viewAd");
+  const productEl = $("viewProduct");
   if (notifyEl) notifyEl.hidden = view !== "notify";
   if (adEl) adEl.hidden = view !== "ad";
+  if (productEl) productEl.hidden = view !== "product";
   document.querySelectorAll(".view-btn[data-view]").forEach((btn) => {
     const on = btn.getAttribute("data-view") === view;
     btn.classList.toggle("is-active", on);
@@ -2116,7 +2212,7 @@ function applyDataView() {
 }
 
 function setDataView(view) {
-  state.dataView = view === "ad" ? "ad" : "notify";
+  state.dataView = view === "ad" ? "ad" : view === "product" ? "product" : "notify";
   applyDataView();
   renderAll();
 }
@@ -2131,7 +2227,9 @@ function renderSources() {
   const errors = state.data.errors || [];
   const ok = sources.map((s) => {
     const adPart = s.adRows != null ? `/${s.adRows}` : "";
-    return `✓ ${s.spreadsheetId.slice(0, 10)}… (${s.overviewRows}/${s.scenarioRows}${adPart})`;
+    const funnelPart = s.funnelRows != null ? `/${s.funnelRows}` : "";
+    const featurePart = s.featureRows != null ? `/${s.featureRows}` : "";
+    return `✓ ${s.spreadsheetId.slice(0, 10)}… (${s.overviewRows}/${s.scenarioRows}${adPart}${funnelPart}${featurePart})`;
   }).join("　");
   const bad = errors.map((e) => `✗ ${e.spreadsheetId.slice(0, 10)}… ${e.error}`).join("<br/>");
   el.innerHTML = [
@@ -2146,6 +2244,10 @@ function renderAll() {
   if (state.dataView === "ad") {
     renderAdBars();
     renderAdTable();
+  } else if (state.dataView === "product") {
+    syncFunnelNameSelect();
+    renderFunnelTable();
+    renderFeatureTable();
   } else {
     renderKpi();
     renderScenarioBars();
@@ -2300,7 +2402,13 @@ async function loadSheets() {
     const n = json.meta.sourceCount || (json.sources || []).length;
     const errN = (json.errors || []).length;
     const adN = json.meta.adRows != null ? `/${json.meta.adRows}` : "";
-    setStatus(`已加载 ${n} 个项目 · ${json.meta.overviewRows}/${json.meta.scenarioRows}${adN} 行` + (errN ? ` · ${errN} 失败` : ""), errN ? "warn" : "ok");
+    const funnelN = json.meta.funnelRows != null ? `/${json.meta.funnelRows}` : "";
+    const featureN = json.meta.featureRows != null ? `/${json.meta.featureRows}` : "";
+    setStatus(
+      `已加载 ${n} 个项目 · ${json.meta.overviewRows}/${json.meta.scenarioRows}${adN}${funnelN}${featureN} 行` +
+        (errN ? ` · ${errN} 失败` : ""),
+      errN ? "warn" : "ok"
+    );
     toast(errN ? `完成：成功 ${n}，失败 ${errN}` : `已加载并清洗 ${n} 个项目表格`);
   } catch (err) {
     state.data = null;
@@ -2523,6 +2631,12 @@ function buildExportMatrix(panelId) {
   if (panelId === "panelAdTable") {
     return matrixFromTable($("adTable") && $("adTable").querySelector("table"));
   }
+  if (panelId === "panelFunnel") {
+    return matrixFromTable($("funnelTable") && $("funnelTable").querySelector("table"));
+  }
+  if (panelId === "panelFeature") {
+    return matrixFromTable($("featureTable") && $("featureTable").querySelector("table"));
+  }
   const panel = $(panelId);
   return panel ? matrixFromTable(panel.querySelector("table")) : null;
 }
@@ -2613,6 +2727,7 @@ function bind() {
   }));
   if ($("cohortDayAdBars")) $("cohortDayAdBars").addEventListener("change", renderAdBars);
   if ($("cohortDayAdTable")) $("cohortDayAdTable").addEventListener("change", renderAdTable);
+  if ($("funnelNameSelect")) $("funnelNameSelect").addEventListener("change", renderFunnelTable);
 
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
   if (saved) $("sheetUrls").value = saved;
