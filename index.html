@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260820b" />
+  <link rel="stylesheet" href="/styles.css?v=20260824a" />
 </head>
 <body>
   <div class="wrap">
@@ -25,7 +25,7 @@
       <div class="url-row actions">
         <button id="btnLoad" type="button">加载并清洗全部</button>
       </div>
-      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>；广告视图另需 <code>panel_ad</code>。</p>
+      <p class="muted tip">表格需「知道链接可查看」，并含 <code>panel_overview</code> / <code>panel_scenario</code>；广告视图另需 <code>panel_ad</code>；产品数据另需 <code>panel_funnel</code> / <code>panel_feature</code>。</p>
       <div id="sourceList" class="source-list muted"></div>
     </section>
 
@@ -70,6 +70,7 @@
         <div class="view-toggle" role="tablist" aria-label="数据视图">
           <button type="button" class="view-btn is-active" data-view="notify" role="tab" aria-selected="true">通知</button>
           <button type="button" class="view-btn" data-view="ad" role="tab" aria-selected="false">广告</button>
+          <button type="button" class="view-btn" data-view="product" role="tab" aria-selected="false">产品数据</button>
         </div>
       </div>
     </section>
@@ -207,8 +208,37 @@
         <p class="muted tip">对比差值单独成列。成功率由成功数 / 应展示数重算。</p>
       </section>
     </div>
+
+    <div id="viewProduct" hidden>
+      <section class="panel" id="panelFunnel">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">产品漏斗</h2>
+          <div class="panel-head-right">
+            <div class="mod-filters">
+              <label class="mod-filter">漏斗名称<select id="funnelNameSelect"></select></label>
+            </div>
+            <button type="button" class="btn-export" data-export="panelFunnel" data-export-name="产品漏斗">导出CSV</button>
+          </div>
+        </div>
+        <div id="dimContextFunnel" class="dim-context muted"></div>
+        <div id="funnelTable" class="table-wrap"></div>
+        <p class="muted tip">步骤用户数 = 该步事件 activeUsers；相对首步 / 相对上一步转化率。配置见 Sheet <code>config_features</code>（配置类型=产品漏斗）。</p>
+      </section>
+
+      <section class="panel" id="panelFeature">
+        <div class="panel-head-row">
+          <h2 class="inline-h2">核心功能使用率</h2>
+          <div class="panel-head-right">
+            <button type="button" class="btn-export" data-export="panelFeature" data-export-name="核心功能使用率">导出CSV</button>
+          </div>
+        </div>
+        <div id="dimContextFeature" class="dim-context muted"></div>
+        <div id="featureTable" class="table-wrap"></div>
+        <p class="muted tip">使用率 = 功能事件 activeUsers ÷ 总活跃（跟 config_filter 总活跃口径）。配置见 <code>config_features</code>（配置类型=核心功能）。</p>
+      </section>
+    </div>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260820b"></script>
+  <script src="/app.js?v=20260824a"></script>
 </body>
 </html>
