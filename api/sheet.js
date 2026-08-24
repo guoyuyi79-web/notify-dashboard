@@ -228,7 +228,12 @@ function cleanAd(rows) {
   });
 }
 
-async function loadOneSheet(entry, overviewName, scenarioName, adName) {
+async function loadOneSheet(entry, names) {
+  const overviewName = names.overview;
+  const scenarioName = names.scenario;
+  const adName = names.ad;
+  const funnelName = names.funnel;
+  const featureName = names.feature;
   const [overviewRaw, scenarioRaw] = await Promise.all([
     fetchSheetCsv(entry.id, overviewName),
     fetchSheetCsv(entry.id, scenarioName)
@@ -251,7 +256,76 @@ async function loadOneSheet(entry, overviewName, scenarioName, adName) {
   } catch (_) {
     ad = [];
   }
-  return { id: entry.id, url: entry.url, overview, scenario, ad };
+  let funnel = [];
+  try {
+    const funnelRaw = await fetchSheetCsv(entry.id, funnelName);
+    funnel = cleanFunnel(funnelRaw).map((r) => ({
+      ...r,
+      _spreadsheetId: entry.id
+    }));
+  } catch (_) {
+    funnel = [];
+  }
+  let feature = [];
+  try {
+    const featureRaw = await fetchSheetCsv(entry.id, featureName);
+    feature = cleanFeature(featureRaw).map((r) => ({
+      ...r,
+      _spreadsheetId: entry.id
+    }));
+  } catch (_) {
+    feature = [];
+  }
+  return { id: entry.id, url: entry.url, overview, scenario, ad, funnel, feature };
+}
+
+function cleanFunnel(rows) {
+  return (rows || []).map((r) => {
+    const o = { ...r };
+    ['步骤序号', '步骤用户数'].forEach((k) => {
+      if (o[k] !== undefined && o[k] !== '') o[k] = Number(String(o[k]).replace(/,/g, '')) || 0;
+    });
+    const parseRate = (raw) => {
+      if (raw === undefined || raw === null || raw === '') return 0;
+      const s = String(raw).trim().replace(/,/g, '');
+      if (!s) return 0;
+      if (s.endsWith('%')) {
+        const n = Number(s.slice(0, -1));
+        return Number.isFinite(n) ? n / 100 : 0;
+      }
+      const n = Number(s);
+      if (!Number.isFinite(n)) return 0;
+      if (n > 1 && n <= 100) return n / 100;
+      return n;
+    };
+    o['相对首步转化率'] = parseRate(o['相对首步转化率']);
+    o['相对上一步转化率'] = parseRate(o['相对上一步转化率']);
+    return o;
+  });
+}
+
+function cleanFeature(rows) {
+  return (rows || []).map((r) => {
+    const o = { ...r };
+    ['功能用户数', '总活跃用户'].forEach((k) => {
+      if (o[k] !== undefined && o[k] !== '') o[k] = Number(String(o[k]).replace(/,/g, '')) || 0;
+    });
+    const parseRate = (raw) => {
+      if (raw === undefined || raw === null || raw === '') return 0;
+      const s = String(raw).trim().replace(/,/g, '');
+      if (!s) return 0;
+      if (s.endsWith('%')) {
+        const n = Number(s.slice(0, -1));
+        return Number.isFinite(n) ? n / 100 : 0;
+      }
+      const n = Number(s);
+      if (!Number.isFinite(n)) return 0;
+      if (n > 1 && n <= 100) return n / 100;
+      return n;
+    };
+    o['使用率'] = parseRate(o['使用率']);
+    return o;
+  });
 }
 
 module.exports = async function handler(req, res) {
@@ -269,9 +343,12 @@ module.exports = async function handler(req, res) {
     const overviewName = (req.query && req.query.overview) || 'panel_overview';
     const scenarioName = (req.query && req.query.scenario) || 'panel_scenario';
     const adName = (req.query && req.query.ad) || 'panel_ad';
+    const funnelName = (req.query && req.query.funnel) || 'panel_funnel';
+    const featureName = (req.query && req.query.feature) || 'panel_feature';
+    const sheetNames = { overview: overviewName, scenario: scenarioName, ad: adName, funnel: funnelName, feature: featureName };
 
     const settled = await Promise.allSettled(
-      entries.map((e) => loadOneSheet(e, overviewName, scenarioName, adName))
+      entries.map((e) => loadOneSheet(e, sheetNames))
     );
 
     const sources = [];
@@ -279,6 +356,8 @@ module.exports = async function handler(req, res) {
     let overview = [];
     let scenario = [];
     let ad = [];
+    let funnel = [];
+    let feature = [];
 
     settled.forEach((item, idx) => {
       if (item.status === 'fulfilled') {
@@ -287,11 +366,15 @@ module.exports = async function handler(req, res) {
           url: item.value.url,
           overviewRows: item.value.overview.length,
           scenarioRows: item.value.scenario.length,
-          adRows: (item.value.ad || []).length
+          adRows: (item.value.ad || []).length,
+          funnelRows: (item.value.funnel || []).length,
+          featureRows: (item.value.feature || []).length
         });
         overview = overview.concat(item.value.overview);
         scenario = scenario.concat(item.value.scenario);
         ad = ad.concat(item.value.ad || []);
+        funnel = funnel.concat(item.value.funnel || []);
+        feature = feature.concat(item.value.feature || []);
       } else {
         errors.push({
           url: entries[idx].url,
@@ -314,25 +397,39 @@ module.exports = async function handler(req, res) {
       return !s || s === '全部' || s === '__ALL__' || s.toLowerCase() === 'all';
     };
     const projects = [...new Set(
-      overview.map((r) => r['项目代号']).concat(ad.map((r) => r['项目代号'])).filter(Boolean)
+      overview.map((r) => r['项目代号'])
+        .concat(ad.map((r) => r['项目代号']))
+        .concat(funnel.map((r) => r['项目代号']))
+        .concat(feature.map((r) => r['项目代号']))
+        .filter(Boolean)
     )];
     const countries = [...new Set(
       overview.map((r) => String(r['国家'] || '').trim())
         .concat(ad.map((r) => String(r['国家'] || '').trim()))
+        .concat(funnel.map((r) => String(r['国家'] || '').trim()))
+        .concat(feature.map((r) => String(r['国家'] || '').trim()))
         .filter((v) => !isAllLabel(v))
     )];
     const brands = [...new Set(
       overview.map((r) => String(r['设备品牌'] || '').trim())
         .concat(ad.map((r) => String(r['设备品牌'] || '').trim()))
+        .concat(funnel.map((r) => String(r['设备品牌'] || '').trim()))
+        .concat(feature.map((r) => String(r['设备品牌'] || '').trim()))
         .filter((v) => !isAllLabel(v))
     )];
     const versions = [...new Set(
       overview.map((r) => String(r['版本'] || '').trim())
         .concat(ad.map((r) => String(r['版本'] || '').trim()))
+        .concat(funnel.map((r) => String(r['版本'] || '').trim()))
+        .concat(feature.map((r) => String(r['版本'] || '').trim()))
         .filter((v) => !isAllLabel(v))
     )];
     const periods = [...new Set(
-      overview.map((r) => r['日期']).concat(ad.map((r) => r['日期'])).filter(Boolean)
+      overview.map((r) => r['日期'])
+        .concat(ad.map((r) => r['日期']))
+        .concat(funnel.map((r) => r['日期']))
+        .concat(feature.map((r) => r['日期']))
+        .filter(Boolean)
     )];
     const cohortDayRaw = []
       .concat(overview.map((r) => r['队列天数']))
@@ -349,12 +446,19 @@ module.exports = async function handler(req, res) {
     const viewTypes = [...new Set(scenario.map((r) => r['查看类型']).filter(Boolean))];
     const adPlaces = [...new Set(ad.map((r) => String(r['广告位'] || '').trim()).filter((v) => !isAllLabel(v)))];
     const adNetworks = [...new Set(ad.map((r) => String(r['上报广告中介'] || '').trim()).filter((v) => !isAllLabel(v)))];
+    const funnelNames = [...new Set(funnel.map((r) => String(r['漏斗名称'] || '').trim()).filter(Boolean))];
 
     return res.status(200).json({
       ok: true,
       sources,
       errors,
-      sheets: { overview: overviewName, scenario: scenarioName, ad: adName },
+      sheets: {
+        overview: overviewName,
+        scenario: scenarioName,
+        ad: adName,
+        funnel: funnelName,
+        feature: featureName
+      },
       meta: {
         projects,
         countries,
@@ -365,14 +469,19 @@ module.exports = async function handler(req, res) {
         viewTypes,
         adPlaces,
         adNetworks,
+        funnelNames,
         overviewRows: overview.length,
         scenarioRows: scenario.length,
         adRows: ad.length,
+        funnelRows: funnel.length,
+        featureRows: feature.length,
         sourceCount: sources.length
       },
       overview,
       scenario,
-      ad
+      ad,
+      funnel,
+      feature
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: String(err && err.message ? err.message : err) });
