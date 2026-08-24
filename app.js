@@ -1514,43 +1514,52 @@ function barWidthPct(m, maxAbs) {
   return Math.max(0, Math.min(100, (n / maxAbs) * 100));
 }
 
-/** 对比项列出全部系列（含基准），方便切换 MG16/MG18 */
+/** 对比项列出全部系列（含当前版本），默认选非当前的那一个 */
 function syncFocusSelect(elId, cols) {
   const el = $(elId);
   if (!el || !cols.length) return;
   const list = cols.map((c) => c.key);
   const prev = el.value;
   fillSelect(el, list.map((k) => ({ value: k, label: k })), true);
-  if (prev && list.includes(prev)) el.value = prev;
+  const baseline = baselineValue();
+  if (prev && list.includes(prev) && prev !== baseline) el.value = prev;
   else {
-    const baseline = baselineValue();
     const prefer = list.find((k) => k !== baseline) || list[0];
     el.value = prefer;
   }
 }
 
+/**
+ * 蓝条/当前 = 顶部「当前版本」；橙条/对比 = 模块「对比版本」。
+ * 两者相同时：保住当前版本，自动改对比版本。
+ */
+function resolveFocusAndBaseKeys(projects, focusElId) {
+  const list = projects || [];
+  const baseline = baselineValue();
+  let baseKey = baseline !== NONE && list.includes(baseline) ? baseline : null;
+  let focusKey = ($(focusElId) && $(focusElId).value) || "";
+  if (!focusKey || !list.includes(focusKey)) {
+    focusKey = list.find((p) => p !== baseKey) || list[0] || "";
+  }
+  if (!baseKey) {
+    baseKey = list.find((p) => p !== focusKey) || null;
+  }
+  if (baseKey && focusKey === baseKey) {
+    focusKey = list.find((p) => p !== baseKey) || focusKey;
+  }
+  if (focusElId && $(focusElId) && focusKey) $(focusElId).value = focusKey;
+  return { focusKey, baseKey };
+}
+
 function pickComparePair(cols, metricSets, focusElId) {
   if (!cols.length) return null;
-  const baseline = baselineValue();
   const compareOn = wantsBaselineCompare();
-  let baseIdx = compareOn && baseline !== NONE ? cols.findIndex((c) => c.key === baseline) : -1;
-  // 无对比：不自动选基准列，只展示单条汇总/当前列
-  if (compareOn && baseIdx < 0 && cols.length >= 2) baseIdx = 0;
-
+  const keys = cols.map((c) => c.key);
   syncFocusSelect(focusElId || "barFocus", cols);
-
-  let focusKey = ($(focusElId || "barFocus") && $(focusElId || "barFocus").value) || "";
-  let focusIdx = cols.findIndex((c) => c.key === focusKey);
-  if (focusIdx < 0) {
-    focusIdx = compareOn ? cols.findIndex((c, i) => i !== baseIdx) : 0;
-  }
-  if (focusIdx < 0) focusIdx = 0;
-
-  let blueIdx = compareOn ? baseIdx : -1;
-  if (compareOn && blueIdx === focusIdx) {
-    blueIdx = cols.findIndex((c, i) => i !== focusIdx);
-  }
-  if (blueIdx < 0) blueIdx = -1;
+  const { focusKey, baseKey } = resolveFocusAndBaseKeys(keys, focusElId || "barFocus");
+  const focusIdx = Math.max(0, cols.findIndex((c) => c.key === focusKey));
+  let blueIdx = compareOn && baseKey ? cols.findIndex((c) => c.key === baseKey) : -1;
+  if (blueIdx === focusIdx) blueIdx = -1;
 
   return {
     focus: { key: cols[focusIdx].key, metrics: metricSets[focusIdx], col: cols[focusIdx] },
@@ -1735,16 +1744,7 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
   const cols = matrix.projects.map((k) => ({ key: k }));
   if (syncFocus) syncFocusSelect("sceneBarFocus", cols);
 
-  const baseline = baselineValue();
-  let focusKey = ($("sceneBarFocus") && $("sceneBarFocus").value) || "";
-  if (!focusKey || !matrix.projects.includes(focusKey)) {
-    focusKey = matrix.projects.find((p) => p !== baseline) || matrix.projects[0];
-    if (syncFocus && $("sceneBarFocus")) $("sceneBarFocus").value = focusKey;
-  }
-  let baseKey = baseline !== NONE ? baseline : matrix.projects.find((p) => p !== focusKey);
-  if (baseKey === focusKey) {
-    baseKey = matrix.projects.find((p) => p !== focusKey);
-  }
+  const { focusKey, baseKey } = resolveFocusAndBaseKeys(matrix.projects, "sceneBarFocus");
 
   const overviewCols = overviewBySeries(day, "overview");
   const focusCol = overviewCols.find((c) => c.key === focusKey);
@@ -2316,14 +2316,7 @@ function renderAdBars() {
   const cols = matrix.projects.map((k) => ({ key: k }));
   syncFocusSelect("adBarFocus", cols);
 
-  const baseline = baselineValue();
-  let focusKey = ($("adBarFocus") && $("adBarFocus").value) || "";
-  if (!focusKey || !matrix.projects.includes(focusKey)) {
-    focusKey = matrix.projects.find((p) => p !== baseline) || matrix.projects[0];
-    if ($("adBarFocus")) $("adBarFocus").value = focusKey;
-  }
-  let baseKey = baseline !== NONE ? baseline : matrix.projects.find((p) => p !== focusKey);
-  if (baseKey === focusKey) baseKey = matrix.projects.find((p) => p !== focusKey);
+  const { focusKey, baseKey } = resolveFocusAndBaseKeys(matrix.projects, "adBarFocus");
 
   const overviewCols = overviewBySeries(day, "overview");
   const focusCol = overviewCols.find((c) => c.key === focusKey);
