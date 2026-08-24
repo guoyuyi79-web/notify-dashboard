@@ -1025,16 +1025,17 @@ function metricLabelHtml(key) {
   return `<button type="button" class="metric-formula-btn" data-metric-key="${escapeHtml(text)}">${escapeHtml(text)}</button>`;
 }
 
-function formatDelta(m, baseM) {
-  if (!baseM) return "";
-  const a = Number(m.value) || 0;
-  const b = Number(baseM.value) || 0;
+function formatDelta(currentM, compareM) {
+  // 差值 = 当前(基准) − 对比版本/对比项
+  if (!currentM || !compareM) return "";
+  const a = Number(currentM.value) || 0;
+  const b = Number(compareM.value) || 0;
   let text = "";
-  if (m.kind === "rate") {
-    // 比率差：百分点差值，展示为 %（如 53.8%−44.0%=+9.8%）
+  if (currentM.kind === "rate") {
+    // 比率差：百分点差值
     const d = (a - b) * 100;
     text = `${d > 0 ? "+" : ""}${d.toFixed(1)}%`;
-  } else if (m.kind === "avg") {
+  } else if (currentM.kind === "avg") {
     const d = a - b;
     text = `${d > 0 ? "+" : ""}${d.toFixed(2)}`;
   } else {
@@ -1216,7 +1217,7 @@ function renderScenarioCompareDetail(matrix, showCopy) {
   const headParts = showCopy
     ? [`<th>查看类型</th><th>通知场景</th><th>文案</th><th>指标</th>`]
     : [`<th>查看类型</th><th>通知场景</th><th>指标</th>`];
-  if (baseKey) headParts.push(`<th class="num">${baseKey}${baseline !== NONE ? "（基准）" : ""}</th>`);
+  if (baseKey) headParts.push(`<th class="num">${baseKey}${baseline !== NONE ? "（当前）" : ""}</th>`);
   compareKeys.forEach((p) => {
     headParts.push(`<th class="num">${p}</th>`);
     headParts.push(`<th class="num">对比</th>`);
@@ -1240,7 +1241,7 @@ function renderScenarioCompareDetail(matrix, showCopy) {
       const m = { kind: md.kind, value: md.get(s) };
       cells.push(`<td class="num">${formatKpiValue(m)}</td>`);
       if (baseS && row.byProject[baseKey]) {
-        cells.push(`<td class="num">${formatDelta(m, { kind: md.kind, value: md.get(baseS) })}</td>`);
+        cells.push(`<td class="num">${formatDelta({ kind: md.kind, value: md.get(baseS) }, m)}</td>`);
       } else {
         cells.push(`<td class="num muted">—</td>`);
       }
@@ -1428,7 +1429,7 @@ function renderKpi() {
 
   const headParts = [`<th>指标</th>${dimHead}`];
   if (baseIdx >= 0) {
-    headParts.push(`<th class="num">${cols[baseIdx].key}（基准）</th>`);
+    headParts.push(`<th class="num">${cols[baseIdx].key}（当前）</th>`);
   }
   compareCols.forEach((c) => {
     headParts.push(`<th class="num">${c.key}</th>`);
@@ -1445,7 +1446,7 @@ function renderKpi() {
       const m = metricSets[ci][i];
       cells.push(`<td class="num">${formatKpiValue(m)}</td>`);
       if (baseMetrics) {
-        cells.push(`<td class="num">${formatDelta(m, baseMetrics[i])}</td>`);
+        cells.push(`<td class="num">${formatDelta(baseMetrics[i], m)}</td>`);
       } else {
         cells.push(`<td class="num muted">—</td>`);
       }
@@ -1562,7 +1563,7 @@ function renderCmpBarPair(fm, bm, tone) {
   if (bm) {
     deltaHtml = (fm.missing || bm.missing)
       ? `<div class="cmp-delta"><span class="delta flat">—</span></div>`
-      : `<div class="cmp-delta">${formatDelta(fm, bm)}</div>`;
+      : `<div class="cmp-delta">${formatDelta(bm, fm)}</div>`;
   }
   return `<div class="cmp-row">
     <div class="cmp-label">${fm.key}${unit ? ` <span class="unit">${unit}</span>` : ""}${deltaHtml}</div>
@@ -1620,7 +1621,7 @@ function renderRateAvgBars(cols, metricSets) {
     if (pair.base) {
       legend.innerHTML = `
         <span class="cmp-legend-item"><span class="cmp-swatch focus"></span>${pair.focus.key}</span>
-        <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${pair.base.key}（基准侧）</span>`;
+        <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${pair.base.key}（当前）</span>`;
     } else {
       legend.innerHTML = `<span class="cmp-legend-item"><span class="cmp-swatch focus"></span>${pair.focus.key}</span>`;
     }
@@ -1732,7 +1733,7 @@ function renderOneScenarioCtr({ metric, tone, day, rows, hostId, legendId, dimId
   if (legend) {
     legend.innerHTML = baseKey
       ? `<span class="cmp-legend-item"><span class="cmp-swatch ${swatchClass}"></span>${focusKey}</span>
-         <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${baseKey}（基准侧）</span>`
+         <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${baseKey}（当前）</span>`
       : `<span class="cmp-legend-item"><span class="cmp-swatch ${swatchClass}"></span>${focusKey}</span>`;
   }
 
@@ -1868,13 +1869,11 @@ function funnelRowsForScope() {
   if (!state.data) return [];
   const g = globalFilters();
   const name = ($("funnelNameSelect") && $("funnelNameSelect").value) || "";
-  return preferSummaryRows(
-    (state.data.funnel || []).filter((r) =>
-      passGlobal(r, g)
-      && (!name || String(r["漏斗名称"] || "") === name)
-    ),
-    g
-  ).sort((a, b) => {
+  const raw = (state.data.funnel || []).filter((r) =>
+    passGlobal(r, g)
+    && (!name || String(r["漏斗名称"] || "") === name)
+  );
+  return preferSummaryRowsForProduct(raw, g).sort((a, b) => {
     const fc = String(a["漏斗名称"] || "").localeCompare(String(b["漏斗名称"] || ""), "zh");
     if (fc) return fc;
     const sc = (Number(a["步骤序号"]) || 0) - (Number(b["步骤序号"]) || 0);
@@ -1886,10 +1885,180 @@ function funnelRowsForScope() {
 function featureRowsForScope() {
   if (!state.data) return [];
   const g = globalFilters();
-  return preferSummaryRows(
-    (state.data.feature || []).filter((r) => passGlobal(r, g)),
-    g
-  ).sort((a, b) => (Number(b["使用率"]) || 0) - (Number(a["使用率"]) || 0));
+  const raw = (state.data.feature || []).filter((r) => passGlobal(r, g));
+  return preferSummaryRowsForProduct(raw, g).sort((a, b) => (Number(b["使用率"]) || 0) - (Number(a["使用率"]) || 0));
+}
+
+/**
+ * 产品表对比时：对比维 / 次级拆列维不要优先收成「全部」行，否则版本对比会丢 1.2.1/1.2.3。
+ */
+function preferSummaryRowsForProduct(rows, g) {
+  if (!shouldCompareSeries()) return preferSummaryRows(rows, g);
+  const mode = compareByValue();
+  const expands = secondaryExpandDims(mode);
+  const keepDetail = (dim) =>
+    (mode === "version" && dim === "version")
+    || (mode === "period" && dim === "period")
+    || expands.some((d) => d.dim === dim);
+  const g2 = {
+    projects: g.projects,
+    versions: keepDetail("version") ? ["__detail__"] : g.versions,
+    countries: keepDetail("country") ? ["__detail__"] : g.countries,
+    brands: keepDetail("brand") ? ["__detail__"] : g.brands,
+    periods: g.periods
+  };
+  return preferSummaryRows(rows, g2);
+}
+
+function funnelMetricDefs() {
+  return [
+    { key: "步骤用户数", kind: "abs", get: (r) => Number(r["步骤用户数"]) || 0 },
+    { key: "相对首步", kind: "rate", get: (r) => Number(r["相对首步转化率"]) || 0 },
+    { key: "相对上一步", kind: "rate", get: (r) => Number(r["相对上一步转化率"]) || 0 }
+  ];
+}
+
+function featureMetricDefs() {
+  return [
+    { key: "功能用户数", kind: "abs", get: (r) => Number(r["功能用户数"]) || 0 },
+    { key: "点击数", kind: "abs", get: (r) => Number(r["点击数"]) || 0 },
+    { key: "总活跃用户", kind: "abs", get: (r) => Number(r["总活跃用户"]) || 0 },
+    { key: "使用率", kind: "rate", get: (r) => Number(r["使用率"]) || 0 },
+    { key: "人均使用次数", kind: "avg", get: (r) => Number(r["人均使用次数"]) || 0 }
+  ];
+}
+
+function productRowSeriesKey(r) {
+  return seriesKeyForRow(r);
+}
+
+function buildFunnelMatrix(rows) {
+  const map = {};
+  (rows || []).forEach((r) => {
+    const series = productRowSeriesKey(r);
+    if (!series) return;
+    const id = [
+      String(r["漏斗名称"] || ""),
+      String(r["步骤序号"] || ""),
+      String(r["步骤显示名"] || "")
+    ].join("||");
+    if (!map[id]) {
+      map[id] = {
+        id,
+        funnelName: r["漏斗名称"] || "",
+        step: Number(r["步骤序号"]) || 0,
+        stepLabel: r["步骤显示名"] || "",
+        sample: r,
+        byProject: {}
+      };
+    }
+    map[id].byProject[series] = r;
+    if (!map[id].sample) map[id].sample = r;
+  });
+  const projects = orderSeries(plannedSeriesKeys({ expandSecondary: true }));
+  const baseline = baselineValue();
+  const rowsOut = Object.values(map).sort((a, b) => {
+    const fc = String(a.funnelName).localeCompare(String(b.funnelName), "zh");
+    if (fc) return fc;
+    return a.step - b.step;
+  });
+  return { projects, rows: rowsOut, baseline };
+}
+
+function buildFeatureMatrix(rows) {
+  const map = {};
+  (rows || []).forEach((r) => {
+    const series = productRowSeriesKey(r);
+    if (!series) return;
+    const id = String(r["功能显示名"] || "");
+    if (!map[id]) {
+      map[id] = {
+        id,
+        featureName: r["功能显示名"] || "",
+        sample: r,
+        byProject: {}
+      };
+    }
+    map[id].byProject[series] = r;
+  });
+  const projects = orderSeries(plannedSeriesKeys({ expandSecondary: true }));
+  const baseline = baselineValue();
+  const rowsOut = Object.values(map).sort((a, b) => {
+    const base = baseline !== NONE ? baseline : projects[0];
+    const ua = base && a.byProject[base] ? Number(a.byProject[base]["使用率"]) || 0 : 0;
+    const ub = base && b.byProject[base] ? Number(b.byProject[base]["使用率"]) || 0 : 0;
+    return ub - ua;
+  });
+  return { projects, rows: rowsOut, baseline };
+}
+
+/** 产品漏斗/功能：固定维 + 指标行 + 基准/对比/差值（对齐场景明细） */
+function renderProductCompareDetail(matrix, kind) {
+  const { projects, rows, baseline } = matrix;
+  if (!rows.length) {
+    return kind === "funnel"
+      ? '<p class="muted">当前筛选下无漏斗数据</p>'
+      : '<p class="muted">当前筛选下无核心功能数据</p>';
+  }
+  const metricDefs = kind === "funnel" ? funnelMetricDefs() : featureMetricDefs();
+  const compareKeys = baseline !== NONE
+    ? projects.filter((p) => p !== baseline)
+    : projects.slice(1);
+  const baseKey = baseline !== NONE ? baseline : projects[0];
+  const hideDims = expandedDimsActive(compareByValue());
+  const gShow = globalFiltersDisplay();
+  const dimHead = dimHeadersHtml(hideDims);
+
+  const headParts = kind === "funnel"
+    ? [`<th>漏斗名称</th><th>步骤</th><th>步骤显示名</th>${dimHead}<th>指标</th>`]
+    : [`<th>功能显示名</th>${dimHead}<th>指标</th>`];
+  if (baseKey) headParts.push(`<th class="num">${escapeHtml(baseKey)}${baseline !== NONE ? "（当前）" : ""}</th>`);
+  compareKeys.forEach((p) => {
+    headParts.push(`<th class="num">${escapeHtml(p)}</th>`);
+    headParts.push(`<th class="num">对比</th>`);
+  });
+
+  const body = rows.map((row) => metricDefs.map((md, mi) => {
+    const baseRow = baseKey ? row.byProject[baseKey] : null;
+    const cells = [];
+    if (baseKey) {
+      cells.push(baseRow
+        ? `<td class="num">${formatKpiValue({ kind: md.kind, value: md.get(baseRow) })}</td>`
+        : `<td class="num muted">—</td>`);
+    }
+    compareKeys.forEach((p) => {
+      const s = row.byProject[p];
+      if (!s) {
+        cells.push(`<td class="num muted">—</td><td class="num muted">—</td>`);
+        return;
+      }
+      const m = { kind: md.kind, value: md.get(s) };
+      cells.push(`<td class="num">${formatKpiValue(m)}</td>`);
+      if (baseRow) {
+        cells.push(`<td class="num">${formatDelta({ kind: md.kind, value: md.get(baseRow) }, m)}</td>`);
+      } else {
+        cells.push(`<td class="num muted">—</td>`);
+      }
+    });
+    const sample = row.sample || baseRow || Object.values(row.byProject)[0] || {};
+    const n = metricDefs.length;
+    if (kind === "funnel") {
+      const idCells = mi === 0
+        ? `<td rowspan="${n}">${escapeHtml(row.funnelName || "—")}</td>
+           <td rowspan="${n}">${num(row.step)}</td>
+           <td rowspan="${n}">${escapeHtml(row.stepLabel || "—")}</td>
+           ${dimCellsHtml(sample, gShow, hideDims).replace(/<td/g, `<td rowspan="${n}"`)}`
+        : "";
+      return `<tr>${idCells}<td>${escapeHtml(md.key)}</td>${cells.join("")}</tr>`;
+    }
+    const idCells = mi === 0
+      ? `<td rowspan="${n}">${escapeHtml(row.featureName || "—")}</td>
+         ${dimCellsHtml(sample, gShow, hideDims).replace(/<td/g, `<td rowspan="${n}"`)}`
+      : "";
+    return `<tr>${idCells}<td>${escapeHtml(md.key)}</td>${cells.join("")}</tr>`;
+  }).join("")).join("");
+
+  return `<div class="table-wrap"><table class="compare-table scenario-detail-compare table-left"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderFunnelTable() {
@@ -1901,18 +2070,21 @@ function renderFunnelTable() {
     host.innerHTML = '<p class="muted">当前筛选下无漏斗数据（请确认 Sheet 含 panel_funnel，且 config_features 已启用产品漏斗）</p>';
     return;
   }
+  if (shouldCompareSeries()) {
+    host.innerHTML = renderProductCompareDetail(buildFunnelMatrix(rows), "funnel");
+    return;
+  }
+  const hideDims = expandedDimsActive(compareByValue());
+  const gShow = globalFiltersDisplay();
   host.innerHTML = `<div class="table-wrap"><table class="table-left"><thead><tr>
     <th>漏斗名称</th><th>步骤</th><th>步骤显示名</th>
-    <th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th>
+    ${dimHeadersHtml(hideDims)}
     <th class="num">步骤用户数</th><th class="num">相对首步</th><th class="num">相对上一步</th>
   </tr></thead><tbody>${rows.map((r) => `<tr>
     <td>${escapeHtml(r["漏斗名称"] || "—")}</td>
     <td>${num(r["步骤序号"])}</td>
     <td>${escapeHtml(r["步骤显示名"] || "—")}</td>
-    <td>${escapeHtml(r["国家"] || "全部")}</td>
-    <td>${escapeHtml(r["设备品牌"] || "全部")}</td>
-    <td>${escapeHtml(r["版本"] || "全部")}</td>
-    <td>${escapeHtml(r["日期"] || "—")}</td>
+    ${dimCellsHtml(r, gShow, hideDims)}
     <td class="num">${num(r["步骤用户数"])}</td>
     <td class="num">${pct(r["相对首步转化率"])}</td>
     <td class="num">${pct(r["相对上一步转化率"])}</td>
@@ -1928,16 +2100,19 @@ function renderFeatureTable() {
     host.innerHTML = '<p class="muted">当前筛选下无核心功能数据（请确认 Sheet 含 panel_feature，且 config_features 已启用核心功能）</p>';
     return;
   }
+  if (shouldCompareSeries()) {
+    host.innerHTML = renderProductCompareDetail(buildFeatureMatrix(rows), "feature");
+    return;
+  }
+  const hideDims = expandedDimsActive(compareByValue());
+  const gShow = globalFiltersDisplay();
   host.innerHTML = `<div class="table-wrap"><table class="table-left"><thead><tr>
     <th>功能显示名</th>
-    <th>国家</th><th>品牌</th><th>版本</th><th>时间周期</th>
+    ${dimHeadersHtml(hideDims)}
     <th class="num">功能用户数</th><th class="num">点击数</th><th class="num">总活跃用户</th><th class="num">使用率</th><th class="num">人均使用次数</th>
   </tr></thead><tbody>${rows.map((r) => `<tr>
     <td>${escapeHtml(r["功能显示名"] || "—")}</td>
-    <td>${escapeHtml(r["国家"] || "全部")}</td>
-    <td>${escapeHtml(r["设备品牌"] || "全部")}</td>
-    <td>${escapeHtml(r["版本"] || "全部")}</td>
-    <td>${escapeHtml(r["日期"] || "—")}</td>
+    ${dimCellsHtml(r, gShow, hideDims)}
     <td class="num">${num(r["功能用户数"])}</td>
     <td class="num">${num(r["点击数"])}</td>
     <td class="num">${num(r["总活跃用户"])}</td>
@@ -2042,7 +2217,7 @@ function renderAdCompareDetail(matrix) {
   const baseKey = baseline !== NONE ? baseline : projects[0];
 
   const headParts = [`<th>广告位</th><th>上报广告中介</th><th>指标</th>`];
-  if (baseKey) headParts.push(`<th class="num">${baseKey}${baseline !== NONE ? "（基准）" : ""}</th>`);
+  if (baseKey) headParts.push(`<th class="num">${baseKey}${baseline !== NONE ? "（当前）" : ""}</th>`);
   compareKeys.forEach((p) => {
     headParts.push(`<th class="num">${p}</th>`);
     headParts.push(`<th class="num">对比</th>`);
@@ -2066,7 +2241,7 @@ function renderAdCompareDetail(matrix) {
       const m = { kind: md.kind, value: md.get(s) };
       cells.push(`<td class="num">${formatKpiValue(m)}</td>`);
       if (baseS && row.byProject[baseKey]) {
-        cells.push(`<td class="num">${formatDelta(m, { kind: md.kind, value: md.get(baseS) })}</td>`);
+        cells.push(`<td class="num">${formatDelta({ kind: md.kind, value: md.get(baseS) }, m)}</td>`);
       } else {
         cells.push(`<td class="num muted">—</td>`);
       }
@@ -2137,7 +2312,7 @@ function renderAdBars() {
   if (legend) {
     legend.innerHTML = baseKey
       ? `<span class="cmp-legend-item"><span class="cmp-swatch focus-user"></span>${focusKey}</span>
-         <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${baseKey}（基准侧）</span>`
+         <span class="cmp-legend-item"><span class="cmp-swatch base"></span>${baseKey}（当前）</span>`
       : `<span class="cmp-legend-item"><span class="cmp-swatch focus-user"></span>${focusKey || "—"}</span>`;
   }
 
@@ -2549,7 +2724,7 @@ function matrixFromCmpBars(host) {
   const items = [...host.querySelectorAll(".cmp-row")];
   if (!items.length) return null;
   const maxVals = Math.max(...items.map((row) => row.querySelectorAll(".cmp-bar-val").length), 1);
-  const head = maxVals >= 2 ? ["名称", "对比项", "基准"] : ["名称", "数值"];
+  const head = maxVals >= 2 ? ["名称", "对比版本", "当前版本"] : ["名称", "数值"];
   const rows = [head];
   items.forEach((row) => {
     const name = cmpLabelText(row.querySelector(".cmp-label"));
@@ -2568,7 +2743,7 @@ function matrixFromSceneCtrData() {
     const userBars = matrixFromCmpBars($("scenarioBars"));
     const eventBars = matrixFromCmpBars($("scenarioBarsEvent"));
     if (!userBars && !eventBars) return null;
-    const out = [["模块", "名称", "对比项", "基准"]];
+    const out = [["模块", "名称", "对比版本", "当前版本"]];
     (userBars || []).slice(1).forEach((r) => out.push(["用户CTR", r[0], r[1] || "", r[2] || ""]));
     (eventBars || []).slice(1).forEach((r) => out.push(["事件CTR", r[0], r[1] || "", r[2] || ""]));
     return out;

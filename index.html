@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260824c" />
+  <link rel="stylesheet" href="/styles.css?v=20260824e" />
 </head>
 <body>
   <div class="wrap">
@@ -38,7 +38,7 @@
           <option value="version">版本</option>
           <option value="period">日期区间</option>
         </select></label>
-        <label>对比基准<select id="baseline"></select></label>
+        <label>当前版本<select id="baseline"></select></label>
         <div class="ms-field" data-ms="project">
           <span class="ms-label">项目代号</span>
           <button type="button" class="ms-toggle" id="projectToggle" aria-expanded="false">全部</button>
@@ -96,7 +96,7 @@
         <h2 class="inline-h2">率 / 人均 · 进度条对比</h2>
         <div class="panel-head-right">
           <div class="mod-filters">
-            <label class="mod-filter">对比项<select id="barFocus"></select></label>
+            <label class="mod-filter">对比版本<select id="barFocus"></select></label>
           </div>
           <button type="button" class="btn-export" data-export="panelRateAvg" data-export-name="率人均进度条">导出CSV</button>
         </div>
@@ -104,7 +104,7 @@
       <div id="dimContextRateBars" class="dim-context muted"></div>
       <div id="rateAvgLegend" class="cmp-legend"></div>
       <div id="rateAvgBars" class="cmp-bars"></div>
-      <p class="muted tip">仅比率与人均。橙=对比项，蓝=基准。对比项可选任一列（含两个项目）。</p>
+      <p class="muted tip">仅比率与人均。蓝=当前版本，橙=对比版本。差值 = 当前 − 对比。</p>
     </section>
 
     <section class="panel scene-ctr-block" id="panelSceneCtr">
@@ -124,7 +124,7 @@
               <button type="button" class="ms-toggle" id="copyBarsToggle" aria-expanded="false">全部</button>
               <div class="ms-panel" id="copyBarsPanel" hidden></div>
             </label>
-            <label class="mod-filter">对比项<select id="sceneBarFocus"></select></label>
+            <label class="mod-filter">对比版本<select id="sceneBarFocus"></select></label>
           </div>
           <button type="button" class="btn-export" data-export="panelSceneCtr" data-export-name="场景点击率">导出CSV</button>
         </div>
@@ -182,7 +182,7 @@
           <div class="panel-head-right">
             <div class="mod-filters">
               <label class="mod-filter">队列天数<select id="cohortDayAdBars"></select></label>
-              <label class="mod-filter">对比项<select id="adBarFocus"></select></label>
+              <label class="mod-filter">对比版本<select id="adBarFocus"></select></label>
             </div>
             <button type="button" class="btn-export" data-export="panelAdBars" data-export-name="广告展示成功率">导出CSV</button>
           </div>
@@ -222,7 +222,7 @@
         </div>
         <div id="dimContextFunnel" class="dim-context muted"></div>
         <div id="funnelTable" class="table-wrap"></div>
-        <p class="muted tip">闭包漏斗（须从第 1 步进入）：步骤用户数来自 GA4 探索漏斗 API；相对首步 / 相对上一步转化率。配置见 Sheet <code>config_features</code>（配置类型=产品漏斗）。</p>
+        <p class="muted tip">闭包漏斗。开启当前版本后分列对比；差值 = 当前 − 对比。配置见 <code>config_features</code>。</p>
       </section>
 
       <section class="panel" id="panelFeature">
@@ -234,11 +234,11 @@
         </div>
         <div id="dimContextFeature" class="dim-context muted"></div>
         <div id="featureTable" class="table-wrap"></div>
-        <p class="muted tip">使用率 = 功能用户数 ÷ 总活跃；人均使用次数 = 点击数(eventCount) ÷ 总活跃。配置见 <code>config_features</code>（配置类型=核心功能）。</p>
+        <p class="muted tip">使用率 = 功能用户 ÷ 总活跃；人均使用次数 = 点击数 ÷ 总活跃。开启对比后同上分列。配置见 <code>config_features</code>。</p>
       </section>
     </div>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260824c"></script>
+  <script src="/app.js?v=20260824e"></script>
 </body>
 </html>
