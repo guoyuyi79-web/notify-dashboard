@@ -647,12 +647,40 @@ function dimContextHtml(gDisp) {
     `国家 ${gDisp.country || "全部"}`,
     `品牌 ${gDisp.brand || "全部"}`
   ];
-  if (mode !== "version") parts.push(`版本 ${gDisp.version || "全部"}`);
   if (mode !== "period") parts.push(`时间周期 ${gDisp.period || "全部"}`);
   if (gDisp.project && gDisp.project !== "全部" && mode !== "project") {
     parts.unshift(`项目 ${gDisp.project}`);
   }
+
+  // 对比维内容直接列在顶部（当前 / 对比）
+  if (wantsBaselineCompare()) {
+    const baseline = baselineValue();
+    const series = plannedSeriesKeys({ expandSecondary: true });
+    const others = series.filter((k) => k && k !== baseline);
+    if (mode === "version") {
+      parts.push(`当前版本 ${baseline !== NONE ? baseline : "—"}`);
+      parts.push(`对比版本 ${others.length ? others.join("、") : (gDisp.version || "—")}`);
+    } else if (mode === "project") {
+      parts.push(`当前项目 ${baseline !== NONE ? baseline : "—"}`);
+      parts.push(`对比项目 ${others.length ? others.join("、") : (gDisp.project || "—")}`);
+    } else if (mode === "period") {
+      parts.push(`当前区间 ${baseline !== NONE ? baseline : "—"}`);
+      parts.push(`对比区间 ${others.length ? others.join("、") : (gDisp.period || "—")}`);
+    }
+  } else if (mode === "version") {
+    parts.push(`版本 ${gDisp.version || "全部"}`);
+  } else {
+    parts.push(`版本 ${gDisp.version || "全部"}`);
+  }
   return `当前维度：${parts.join(" · ")}`;
+}
+
+/** 产品表：仅开启对比时隐藏对比维列（已在顶部展示） */
+function productHideDims() {
+  if (!shouldCompareSeries()) {
+    return { country: false, brand: false, version: false, period: false };
+  }
+  return expandedDimsActive(compareByValue());
 }
 
 function setDimContext(id, gDisp) {
@@ -2005,7 +2033,7 @@ function renderProductCompareDetail(matrix, kind) {
     ? projects.filter((p) => p !== baseline)
     : projects.slice(1);
   const baseKey = baseline !== NONE ? baseline : projects[0];
-  const hideDims = expandedDimsActive(compareByValue());
+  const hideDims = productHideDims();
   const gShow = globalFiltersDisplay();
   const dimHead = dimHeadersHtml(hideDims);
 
@@ -2074,7 +2102,7 @@ function renderFunnelTable() {
     host.innerHTML = renderProductCompareDetail(buildFunnelMatrix(rows), "funnel");
     return;
   }
-  const hideDims = expandedDimsActive(compareByValue());
+  const hideDims = productHideDims();
   const gShow = globalFiltersDisplay();
   host.innerHTML = `<div class="table-wrap"><table class="table-left"><thead><tr>
     <th>漏斗名称</th><th>步骤</th><th>步骤显示名</th>
@@ -2104,7 +2132,7 @@ function renderFeatureTable() {
     host.innerHTML = renderProductCompareDetail(buildFeatureMatrix(rows), "feature");
     return;
   }
-  const hideDims = expandedDimsActive(compareByValue());
+  const hideDims = productHideDims();
   const gShow = globalFiltersDisplay();
   host.innerHTML = `<div class="table-wrap"><table class="table-left"><thead><tr>
     <th>功能显示名</th>
