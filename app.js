@@ -3,6 +3,10 @@ const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = "notify_sheet_urls";
 const ALL = "__ALL__";
 const NONE = "__NONE__";
+/** 版本筛选：各项目各自取最新具体版本（与「全部」/具体版本互斥） */
+const LATEST = "__LATEST__";
+const LATEST_LABEL = "最新版本";
+const latestVersionCache = new Map();
 
 function toast(msg) {
   const el = $("toast");
@@ -90,6 +94,91 @@ function isAllToken(v) {
   return !s || s === ALL || s === "全部" || s === "跟随全局" || s.toLowerCase() === "all";
 }
 
+function isLatestToken(v) {
+  const s = String(v == null ? "" : v).trim();
+  return s === LATEST || s === LATEST_LABEL;
+}
+
+function wantsLatestVersion(arr) {
+  return !!(arr && arr.some(isLatestToken));
+}
+
+/** semver-like：按数字段比较（1.2.10 > 1.2.9），非数字段 localeCompare */
+function compareVersionLabels(a, b) {
+  const pa = String(a == null ? "" : a).split(/[.\-_]/).map((s) => s.trim()).filter((s) => s !== "");
+  const pb = String(b == null ? "" : b).split(/[.\-_]/).map((s) => s.trim()).filter((s) => s !== "");
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const xa = pa[i] || "0";
+    const xb = pb[i] || "0";
+    const na = Number(xa);
+    const nb = Number(xb);
+    const aNum = Number.isFinite(na) && String(na) === xa;
+    const bNum = Number.isFinite(nb) && String(nb) === xb;
+    if (aNum && bNum) {
+      if (na !== nb) return na - nb;
+      continue;
+    }
+    const c = String(xa).localeCompare(String(xb), "zh");
+    if (c) return c;
+  }
+  return String(a).localeCompare(String(b), "zh");
+}
+
+function clearLatestVersionCache() {
+  latestVersionCache.clear();
+}
+
+/**
+ * 在给定其它筛选下，解析某项目的最新具体版本；无具体版本则回退「全部」。
+ */
+function resolveLatestVersion(project, g) {
+  const countries = (g && g.countries) || ["全部"];
+  const brands = (g && g.brands) || ["全部"];
+  const periods = (g && g.periods) || [];
+  const cacheKey = [
+    String(project || ""),
+    countries.join("\u0001"),
+    brands.join("\u0001"),
+    periods.join("\u0001")
+  ].join("|");
+  if (latestVersionCache.has(cacheKey)) return latestVersionCache.get(cacheKey);
+
+  const gScan = {
+    projects: project && !isAllToken(project) ? [project] : ["全部"],
+    versions: ["全部"],
+    countries,
+    brands,
+    periods
+  };
+  const found = new Set();
+  const bags = state.data
+    ? [state.data.overview, state.data.scenario, state.data.ad, state.data.funnel, state.data.feature]
+    : [];
+  bags.forEach((rows) => {
+    (rows || []).forEach((r) => {
+      if (!passGlobal(r, gScan)) return;
+      const v = String(r["版本"] || "").trim();
+      if (v && !isAllToken(v) && !isLatestToken(v)) found.add(v);
+    });
+  });
+  let result = "全部";
+  if (found.size) {
+    const sorted = [...found].sort(compareVersionLabels);
+    result = sorted[sorted.length - 1];
+  }
+  latestVersionCache.set(cacheKey, result);
+  return result;
+}
+
+/** 将「最新版本」解析为具体版本（对比维=版本时当作全部） */
+function resolveVersionsForFilter(versions, project, g) {
+  const list = versions || ["全部"];
+  if (!wantsLatestVersion(list)) return list;
+  if (compareByValue() === "version") return ["全部"];
+  return [resolveLatestVersion(project, g || { versions: list })];
+}
+
 function isDay0Label(day) {
   const s = String(day || "").trim();
   return /^day\s*0$/i.test(s) || s === "0" || s === "D0";
@@ -150,7 +239,8 @@ function formatMsSummary(id) {
   const set = multiState[id] || new Set([ALL]);
   const vals = [...set];
   if (!vals.length || vals.some(isAllToken)) return "全部";
-  if (vals.length <= 2) return vals.join("、");
+  if (id === "version" && vals.some(isLatestToken)) return LATEST_LABEL;
+  if (vals.length <= 2) return vals.map((v) => (isLatestToken(v) ? LATEST_LABEL : v)).join("、");
   return `${vals.slice(0, 2).join("、")}等${vals.length}项`;
 }
 
@@ -159,9 +249,12 @@ function updateMsToggleLabel(id) {
   if (!btn) return;
   const text = formatMsSummary(id);
   btn.textContent = text;
-  btn.title = [...(multiState[id] || [])].some(isAllToken)
+  const vals = [...(multiState[id] || [])];
+  btn.title = vals.some(isAllToken)
     ? "全部"
-    : [...(multiState[id] || [])].join("、");
+    : vals.some(isLatestToken)
+      ? LATEST_LABEL
+      : vals.join("、");
 }
 
 function closeAllMsPanels(exceptId) {
@@ -184,7 +277,7 @@ function filterMsOptions(id, query) {
   panel.querySelectorAll(".ms-option").forEach((label) => {
     const input = label.querySelector("input");
     const val = input ? input.value : "";
-    if (!needle || isAllToken(val)) {
+    if (!needle || isAllToken(val) || isLatestToken(val)) {
       label.hidden = false;
       return;
     }
@@ -224,6 +317,13 @@ function fillMultiSelect(id, values, keep) {
   if (!opts.some((o) => o.value === ALL)) {
     opts.unshift({ value: ALL, label: "全部" });
   }
+  // 版本多选：在「全部」后插入「最新版本」
+  if (id === "version" && !opts.some((o) => isLatestToken(o.value))) {
+    const allIdx = opts.findIndex((o) => o.value === ALL);
+    const latestOpt = { value: LATEST, label: LATEST_LABEL };
+    if (allIdx >= 0) opts.splice(allIdx + 1, 0, latestOpt);
+    else opts.unshift(latestOpt);
+  }
 
   // 恢复选中：若旧值都不在新选项里，回退全部
   const validPrev = [...prev].filter((v) => opts.some((o) => o.value === v));
@@ -231,8 +331,10 @@ function fillMultiSelect(id, values, keep) {
     multiState[id] = new Set([ALL]);
   } else if (validPrev.some(isAllToken)) {
     multiState[id] = new Set([ALL]);
+  } else if (id === "version" && validPrev.some(isLatestToken)) {
+    multiState[id] = new Set([LATEST]);
   } else {
-    multiState[id] = new Set(validPrev);
+    multiState[id] = new Set(validPrev.filter((v) => !isLatestToken(v)));
   }
 
   const needSearch = MS_SEARCH_IDS.has(id);
@@ -271,7 +373,24 @@ function onMsCheckboxChange(id, input) {
   const panel = $(msPanelId(id));
   const val = input.value;
 
-  if (isAllToken(val)) {
+  if (id === "version" && isLatestToken(val)) {
+    if (input.disabled) {
+      input.checked = false;
+      return;
+    }
+    if (input.checked) {
+      multiState[id] = new Set([LATEST]);
+      panel.querySelectorAll("input[type=checkbox]").forEach((el) => {
+        el.checked = isLatestToken(el.value);
+      });
+    } else {
+      // 不允许空选，回退全部
+      multiState[id] = new Set([ALL]);
+      panel.querySelectorAll("input[type=checkbox]").forEach((el) => {
+        el.checked = isAllToken(el.value);
+      });
+    }
+  } else if (isAllToken(val)) {
     if (input.checked) {
       multiState[id] = new Set([ALL]);
       panel.querySelectorAll("input[type=checkbox]").forEach((el) => {
@@ -283,13 +402,18 @@ function onMsCheckboxChange(id, input) {
       multiState[id] = new Set([ALL]);
     }
   } else if (input.checked) {
-    const next = new Set([...(multiState[id] || [])].filter((v) => !isAllToken(v)));
+    const next = new Set(
+      [...(multiState[id] || [])].filter((v) => !isAllToken(v) && !isLatestToken(v))
+    );
     next.add(val);
     multiState[id] = next;
-    const allBox = panel.querySelector(`input[value="${ALL}"]`);
-    if (allBox) allBox.checked = false;
+    panel.querySelectorAll("input[type=checkbox]").forEach((el) => {
+      if (isAllToken(el.value) || isLatestToken(el.value)) el.checked = false;
+    });
   } else {
-    const next = new Set([...(multiState[id] || [])].filter((v) => v !== val && !isAllToken(v)));
+    const next = new Set(
+      [...(multiState[id] || [])].filter((v) => v !== val && !isAllToken(v) && !isLatestToken(v))
+    );
     if (!next.size) {
       multiState[id] = new Set([ALL]);
       const allBox = panel.querySelector(`input[value="${ALL}"]`);
@@ -299,6 +423,7 @@ function onMsCheckboxChange(id, input) {
     }
   }
   updateMsToggleLabel(id);
+  clearLatestVersionCache();
   syncBaselineOptions();
   if (id === "sceneBars" || id === "copyBars") {
     syncSceneLocalFilters("bars");
@@ -319,7 +444,8 @@ function readMulti(id) {
   if (!set || !set.size) return ["全部"];
   const vals = [...set];
   if (vals.some(isAllToken)) return ["全部"];
-  return vals;
+  if (id === "version" && vals.some(isLatestToken)) return [LATEST];
+  return vals.filter((v) => !isLatestToken(v));
 }
 
 function bindMultiSelectUI() {
@@ -351,6 +477,7 @@ function bindMultiSelectUI() {
 
 function formatMultiLabel(arr) {
   if (!arr || !arr.length || arr.some(isAllToken) || arr.includes("全部")) return "全部";
+  if (arr.some(isLatestToken)) return LATEST_LABEL;
   return arr.join("、");
 }
 
@@ -424,6 +551,7 @@ function filtersFor(_scope) {
   const g = globalFilters();
   const mode = compareByValue();
   const out = { ...g };
+  // 对比维=版本时「最新版本」无意义，当作全部（各版本分列）
   if (mode === "version") out.versions = ["全部"];
   if (mode === "period") out.periods = [];
   if (mode === "project") out.projects = ["全部"];
@@ -442,10 +570,19 @@ function matchDimMulti(rowVal, selectedArr, emptyAsAll) {
 
 function passGlobal(r, g) {
   const projects = g.projects || (g.project ? [g.project] : ["全部"]);
-  const versions = g.versions || (g.version ? [g.version] : ["全部"]);
+  let versions = g.versions || (g.version ? [g.version] : ["全部"]);
   const countries = g.countries || (g.country ? [g.country] : ["全部"]);
   const brands = g.brands || (g.brand ? [g.brand] : ["全部"]);
   const periods = g.periods || (g.period ? [g.period] : []);
+  if (wantsLatestVersion(versions)) {
+    versions = resolveVersionsForFilter(versions, r["项目代号"], {
+      projects,
+      versions,
+      countries,
+      brands,
+      periods
+    });
+  }
   return matchDimMulti(r["项目代号"], projects, false)
     && matchDimMulti(r["版本"] || "全部", versions, true)
     && matchDimMulti(r["国家"], countries, false)
@@ -698,7 +835,12 @@ function seriesDimLine(col) {
   ];
   // 对比维度已在行首标签展示，这里不再重复
   if (mode !== "version") {
-    parts.push(`版本 ${gDisp.version !== "全部" ? gDisp.version : (r["版本"] || "全部")}`);
+    const gv = gDisp.version;
+    const rv = r["版本"] || "全部";
+    const verLabel = wantsLatestVersion([gv]) || gv === LATEST_LABEL
+      ? rv
+      : (gv && gv !== "全部" ? gv : rv);
+    parts.push(`版本 ${verLabel}`);
   }
   if (mode !== "period") {
     const periodLabel = (gDisp.period && gDisp.period !== "—")
@@ -719,11 +861,11 @@ function seriesLabels(mode) {
         .map((r) => String(r["版本"] || "").trim())
         .filter((v) => v && !isAllToken(v)))];
     }
-    if (!gUI.versions.some(isAllToken) && !gUI.versions.includes("全部")) {
+    if (!gUI.versions.some(isAllToken) && !gUI.versions.includes("全部") && !wantsLatestVersion(gUI.versions)) {
       list = list.filter((v) => gUI.versions.includes(v));
     }
     if (!list.length) list = ["全部"];
-    return list.sort((a, b) => String(a).localeCompare(String(b), "zh"));
+    return list.sort(compareVersionLabels);
   }
   if (mode === "period") {
     let list = (meta.periods || []).slice();
@@ -741,9 +883,10 @@ function seriesLabels(mode) {
   return projects.slice();
 }
 
-/** 多选且≥2 项时才拆列；「全部」不拆 */
+/** 多选且≥2 项时才拆列；「全部」/「最新版本」不拆 */
 function concreteMultiSelected(arr) {
   if (!arr || !arr.length || arr.some(isAllToken) || arr.includes("全部")) return null;
+  if (wantsLatestVersion(arr)) return null;
   if (arr.length < 2) return null;
   return arr.slice();
 }
@@ -845,6 +988,16 @@ function overviewBySeries(cohortDay, scope, options) {
       if (combo.country) gOne.countries = [combo.country];
       if (combo.version) gOne.versions = [combo.version];
       if (combo.brand) gOne.brands = [combo.brand];
+
+      // 最新版本：按当前系列所属项目各自解析（对比维=版本时已在 filtersFor 清掉）
+      if (wantsLatestVersion(gOne.versions) && mode !== "version") {
+        const projKey = mode === "project"
+          ? label
+          : (gOne.projects.length === 1 && !gOne.projects.some(isAllToken) ? gOne.projects[0] : "");
+        if (projKey) {
+          gOne.versions = [resolveLatestVersion(projKey, gOne)];
+        }
+      }
 
       const rows = preferSummaryRows(
         (state.data.overview || []).filter((r) => passGlobal(r, gOne) && passCohort(r, cohortDay)),
@@ -1300,7 +1453,11 @@ function dimCellsHtml(row, gShow, hide) {
   const h = hide || expandedDimsActive(compareByValue());
   const country = (row && row["国家"]) || gShow.country || "全部";
   const brand = (row && (row["设备品牌"] || "全部")) || gShow.brand || "全部";
-  const version = (row && (row["版本"] || "全部")) || gShow.version || "全部";
+  // 筛选为「最新版本」时优先展示行内已解析的真实版本
+  let version = (row && (row["版本"] || "全部")) || gShow.version || "全部";
+  if ((gShow.version === LATEST_LABEL || isLatestToken(gShow.version)) && row && row["版本"]) {
+    version = row["版本"] || "全部";
+  }
   const uiPeriods = (globalFilters().periods || []);
   let period = "全部";
   if (!uiPeriods.length) {
@@ -2451,7 +2608,9 @@ function renderSources() {
 }
 
 function renderAll() {
+  clearLatestVersionCache();
   applyDataView();
+  syncVersionLatestAvailability();
   syncSceneLocalFilters();
   if (state.dataView === "ad") {
     renderAdBars();
@@ -2544,6 +2703,28 @@ function syncSceneLocalFilters(only) {
   }
 }
 
+function syncVersionLatestAvailability() {
+  const panel = $("versionPanel");
+  if (!panel) return;
+  const disabled = compareByValue() === "version";
+  const latestInput = panel.querySelector(`input[value="${LATEST}"]`);
+  if (latestInput) {
+    latestInput.disabled = disabled;
+    const label = latestInput.closest("label");
+    if (label) {
+      label.classList.toggle("is-disabled", disabled);
+      label.title = disabled ? "对比维度为「版本」时不可用，请改用具体版本或「全部」" : "";
+    }
+  }
+  if (disabled && multiState.version && [...multiState.version].some(isLatestToken)) {
+    multiState.version = new Set([ALL]);
+    panel.querySelectorAll("input[type=checkbox]").forEach((el) => {
+      el.checked = isAllToken(el.value);
+    });
+    updateMsToggleLabel("version");
+  }
+}
+
 function syncFilters() {
   const meta = state.data.meta || {};
   fillMultiSelect("project", optionList(meta.projects), true);
@@ -2551,6 +2732,7 @@ function syncFilters() {
   fillMultiSelect("country", optionList(meta.countries), true);
   fillMultiSelect("brand", optionList(meta.brands), true);
   fillMultiSelect("period", optionList(meta.periods, true), true);
+  syncVersionLatestAvailability();
 
   const days = meta.cohortDays || [];
   const dayOpts = days.length
@@ -2919,7 +3101,10 @@ function bind() {
     const el = $(id);
     if (!el) return;
     el.addEventListener("change", () => {
-      if (id === "compareBy") syncBaselineOptions();
+      if (id === "compareBy") {
+        syncVersionLatestAvailability();
+        syncBaselineOptions();
+      }
       renderAll();
     });
   });
