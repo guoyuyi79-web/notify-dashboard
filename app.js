@@ -1042,6 +1042,7 @@ function kpiMetricsFromOverview(row, retentionExtras) {
   return head.concat(retains).concat([
     { key: "授权数", kind: "abs", value: Number(row["授权数"]) || 0 },
     { key: "发送通知用户", kind: "abs", value: Number(row["发送通知用户数"]) || 0 },
+    { key: "发送通知总数", kind: "abs", value: showCount },
     { key: "点击用户", kind: "abs", value: Number(row["点击用户数"]) || 0 },
     { key: "授权率", kind: "rate", value: asRate(row["授权率"]) },
     { key: "通知渗透率", kind: "rate", value: penetration },
@@ -1092,6 +1093,10 @@ const KPI_FORMULAS = {
   "发送通知用户": {
     formula: "通知展示用户数",
     tip: "通知展示事件的去重用户"
+  },
+  "发送通知总数": {
+    formula: "通知展示 eventCount（发通知总数）",
+    tip: "通知展示事件次数；人均通知数 = 本字段 ÷ 总活跃用户"
   },
   "点击用户": {
     formula: "通知点击用户数",
