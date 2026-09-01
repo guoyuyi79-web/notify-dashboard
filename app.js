@@ -2450,7 +2450,11 @@ function adMetricDefs() {
   ];
 }
 
-function renderAdCompareDetail(matrix) {
+function formatAdCohortLabel(days) {
+  return formatMultiLabel(days || ["全部"]);
+}
+
+function renderAdCompareDetail(matrix, cohortLabel) {
   const { projects, rows, baseline } = matrix;
   if (!rows.length) return '<p class="muted">当前筛选下无广告明细</p>';
   const metricDefs = adMetricDefs();
@@ -2458,8 +2462,9 @@ function renderAdCompareDetail(matrix) {
     ? projects.filter((p) => p !== baseline)
     : projects.slice(1);
   const baseKey = baseline !== NONE ? baseline : projects[0];
+  const dayLabel = cohortLabel || "全部";
 
-  const headParts = [`<th>广告位</th><th>上报广告中介</th><th>指标</th>`];
+  const headParts = [`<th>广告位</th><th>上报广告中介</th><th>指标</th><th>队列天数</th>`];
   if (baseKey) headParts.push(`<th class="num">${baseKey}${baseline !== NONE ? "（当前）" : ""}</th>`);
   compareKeys.forEach((p) => {
     headParts.push(`<th class="num">${p}</th>`);
@@ -2491,7 +2496,8 @@ function renderAdCompareDetail(matrix) {
     });
     const placeCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.place || "—"}</td>` : "";
     const agencyCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${row.agency || "—"}</td>` : "";
-    return `<tr>${placeCell}${agencyCell}<td>${md.key}</td>${cells.join("")}</tr>`;
+    const dayCell = mi === 0 ? `<td rowspan="${metricDefs.length}">${escapeHtml(dayLabel)}</td>` : "";
+    return `<tr>${placeCell}${agencyCell}<td>${md.key}</td>${dayCell}${cells.join("")}</tr>`;
   }).join("")).join("");
 
   return `<div class="table-wrap"><table class="compare-table scenario-detail-compare table-left"><thead><tr>${headParts.join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -2576,13 +2582,14 @@ function renderAdBars() {
 function renderAdTable() {
   const days = adCohortDaysFor("table");
   const places = adPlacesFor("table");
+  const dayLabel = formatAdCohortLabel(days);
   setDimContext("dimContextAdTable", globalFiltersDisplay());
   const rows = adsForScope(days, places);
   const host = $("adTable");
   if (!host) return;
 
   if (shouldCompareSeries()) {
-    host.innerHTML = renderAdCompareDetail(buildAdMatrix(rows));
+    host.innerHTML = renderAdCompareDetail(buildAdMatrix(rows), dayLabel);
     return;
   }
 
@@ -2591,6 +2598,7 @@ function renderAdTable() {
     project: (s) => s.project || "",
     place: (s) => s.place || "",
     agency: (s) => s.agency || "",
+    cohort: () => dayLabel,
     shouldShow: (s) => s.shouldShow,
     success: (s) => s.success,
     successRate: (s) => s.successRate,
@@ -2601,6 +2609,7 @@ function renderAdTable() {
         ${sortableTh(scope, "project", "系列")}
         ${sortableTh(scope, "place", "广告位")}
         ${sortableTh(scope, "agency", "上报广告中介")}
+        ${sortableTh(scope, "cohort", "队列天数")}
         ${sortableTh(scope, "shouldShow", "广告应展示数")}
         ${sortableTh(scope, "success", "广告展示成功数")}
         ${sortableTh(scope, "successRate", "广告展示成功率")}
@@ -2609,6 +2618,7 @@ function renderAdTable() {
         <td>${s.project || "—"}</td>
         <td>${s.place || "—"}</td>
         <td>${s.agency || "—"}</td>
+        <td>${escapeHtml(dayLabel)}</td>
         <td>${num(s.shouldShow)}</td>
         <td>${num(s.success)}</td>
         <td>${pct(s.successRate)}</td>
