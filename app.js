@@ -227,10 +227,18 @@ const multiState = {
   sceneBars: new Set([ALL]),
   copyBars: new Set([ALL]),
   sceneTable: new Set([ALL]),
-  copyTable: new Set([ALL])
+  copyTable: new Set([ALL]),
+  cohortDayAdBars: new Set([ALL]),
+  cohortDayAdTable: new Set([ALL]),
+  adPlaceBars: new Set([ALL]),
+  adPlaceTable: new Set([ALL])
 };
 
-const MS_IDS = ["project", "version", "country", "brand", "period", "sceneBars", "copyBars", "sceneTable", "copyTable"];
+const MS_IDS = [
+  "project", "version", "country", "brand", "period",
+  "sceneBars", "copyBars", "sceneTable", "copyTable",
+  "cohortDayAdBars", "cohortDayAdTable", "adPlaceBars", "adPlaceTable"
+];
 
 function msToggleId(id) { return id + "Toggle"; }
 function msPanelId(id) { return id + "Panel"; }
@@ -435,6 +443,14 @@ function onMsCheckboxChange(id, input) {
     renderScenarioTable();
     return;
   }
+  if (id === "cohortDayAdBars" || id === "adPlaceBars") {
+    renderAdBars();
+    return;
+  }
+  if (id === "cohortDayAdTable" || id === "adPlaceTable") {
+    renderAdTable();
+    return;
+  }
   syncSceneLocalFilters();
   renderAll();
 }
@@ -591,12 +607,21 @@ function passGlobal(r, g) {
 }
 
 function passCohort(r, cohortDay) {
+  if (Array.isArray(cohortDay)) {
+    if (!cohortDay.length || cohortDay.some(isAllToken) || cohortDay.includes("全部")) return true;
+    return cohortDay.includes(String(r["队列天数"] || ""));
+  }
   if (!cohortDay || cohortDay === "全部" || cohortDay === ALL) return true;
   return String(r["队列天数"] || "") === cohortDay;
 }
 function passViewType(r, viewType) {
   if (!viewType || viewType === "全部" || viewType === ALL) return true;
   return String(r["查看类型"] || "") === viewType;
+}
+
+function passAdPlace(r, places) {
+  if (!places || !places.length || places.some(isAllToken) || places.includes("全部")) return true;
+  return places.includes(String(r["广告位"] || "").trim());
 }
 
 function passSceneName(r, names) {
@@ -2039,15 +2064,34 @@ function preferAdDetailRows(rows) {
   return out;
 }
 
-function adsForScope(cohortDay) {
+function adsForScope(cohortDays, places) {
   if (!state.data) return [];
   const g = globalFilters();
+  const days = cohortDays == null ? ["全部"] : cohortDays;
+  const placeFilter = places == null ? ["全部"] : places;
   return preferAdDetailRows(
     preferSummaryRows(
-      (state.data.ad || []).filter((r) => passGlobal(r, g) && passCohort(r, cohortDay)),
+      (state.data.ad || []).filter((r) =>
+        passGlobal(r, g) && passCohort(r, days) && passAdPlace(r, placeFilter)
+      ),
       g
     )
   );
+}
+
+function adCohortDaysFor(which) {
+  return readMulti(which === "bars" ? "cohortDayAdBars" : "cohortDayAdTable");
+}
+
+function adPlacesFor(which) {
+  return readMulti(which === "bars" ? "adPlaceBars" : "adPlaceTable");
+}
+
+/** 多选队列天时，overview 侧取数用「全部」或单天 */
+function adOverviewCohortKey(days) {
+  if (!days || !days.length || days.some(isAllToken) || days.includes("全部")) return ALL;
+  if (days.length === 1) return days[0];
+  return ALL;
 }
 
 function syncFunnelNameSelect() {
@@ -2459,12 +2503,14 @@ function renderAdBars() {
   const dimEl = $("dimContextAdBars");
   if (!host) return;
 
-  const day = ($("cohortDayAdBars") && $("cohortDayAdBars").value) || ALL;
-  const rows = adsForScope(day);
+  const days = adCohortDaysFor("bars");
+  const places = adPlacesFor("bars");
+  const dayKey = adOverviewCohortKey(days);
+  const rows = adsForScope(days, places);
 
   if (!shouldCompareSeries()) {
     const list = buildAdList(rows, false).slice().sort((a, b) => b.successRate - a.successRate);
-    syncFocusSelect("adBarFocus", overviewBySeries(day, "overview"));
+    syncFocusSelect("adBarFocus", overviewBySeries(dayKey, "overview"));
     if (legend) legend.innerHTML = "";
     if (dimEl) dimEl.textContent = dimContextHtml(globalFiltersDisplay());
     host.innerHTML = list.length
@@ -2489,7 +2535,7 @@ function renderAdBars() {
 
   const { focusKey, baseKey } = resolveFocusAndBaseKeys(matrix.projects, "adBarFocus");
 
-  const overviewCols = overviewBySeries(day, "overview");
+  const overviewCols = overviewBySeries(dayKey, "overview");
   const focusCol = overviewCols.find((c) => c.key === focusKey);
   const baseCol = overviewCols.find((c) => c.key === baseKey);
   if (dimEl) {
@@ -2528,9 +2574,10 @@ function renderAdBars() {
 }
 
 function renderAdTable() {
-  const day = ($("cohortDayAdTable") && $("cohortDayAdTable").value) || ALL;
+  const days = adCohortDaysFor("table");
+  const places = adPlacesFor("table");
   setDimContext("dimContextAdTable", globalFiltersDisplay());
-  const rows = adsForScope(day);
+  const rows = adsForScope(days, places);
   const host = $("adTable");
   if (!host) return;
 
@@ -2750,10 +2797,20 @@ function syncFilters() {
   const defaultDay = preferDefaultDay(days);
   const defaultView = preferDefaultViewType(viewTypes);
 
-  ["cohortDayOverview", "cohortDayScenarioBars", "cohortDayScenarioTable", "cohortDayAdBars", "cohortDayAdTable"].forEach((id) => {
+  ["cohortDayOverview", "cohortDayScenarioBars", "cohortDayScenarioTable"].forEach((id) => {
     fillSelect($(id), dayOpts, true);
     if ($(id) && (!$(id).value || isAllToken($(id).value))) $(id).value = defaultDay;
   });
+  ["cohortDayAdBars", "cohortDayAdTable"].forEach((id) => {
+    fillMultiSelect(id, dayOpts, true);
+    const cur = readMulti(id);
+    if (cur.some(isAllToken) && defaultDay && !isAllToken(defaultDay)) {
+      multiState[id] = new Set([defaultDay]);
+      fillMultiSelect(id, dayOpts, true);
+    }
+  });
+  fillMultiSelect("adPlaceBars", optionList(meta.adPlaces || []), true);
+  fillMultiSelect("adPlaceTable", optionList(meta.adPlaces || []), true);
   ["viewTypeScenarioBars", "viewTypeScenarioTable"].forEach((id) => {
     const el = $(id);
     if (!el) return;
@@ -2992,8 +3049,9 @@ function matrixFromSceneCtrData() {
 }
 
 function matrixFromAdBarsData() {
-  const day = ($("cohortDayAdBars") && $("cohortDayAdBars").value) || ALL;
-  const rows = adsForScope(day);
+  const days = adCohortDaysFor("bars");
+  const places = adPlacesFor("bars");
+  const rows = adsForScope(days, places);
   if (shouldCompareSeries()) return matrixFromCmpBars($("adBars"));
   const list = buildAdList(rows, false);
   if (!list.length) return null;
@@ -3127,8 +3185,6 @@ function bind() {
     syncSceneLocalFilters("table");
     renderScenarioTable();
   }));
-  if ($("cohortDayAdBars")) $("cohortDayAdBars").addEventListener("change", renderAdBars);
-  if ($("cohortDayAdTable")) $("cohortDayAdTable").addEventListener("change", renderAdTable);
   if ($("funnelNameSelect")) $("funnelNameSelect").addEventListener("change", renderFunnelTable);
 
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("notify_sheet_url");
@@ -3143,6 +3199,10 @@ function bind() {
   fillMultiSelect("copyBars", [{ value: ALL, label: "全部" }], false);
   fillMultiSelect("sceneTable", [{ value: ALL, label: "全部" }], false);
   fillMultiSelect("copyTable", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("cohortDayAdBars", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("cohortDayAdTable", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("adPlaceBars", [{ value: ALL, label: "全部" }], false);
+  fillMultiSelect("adPlaceTable", [{ value: ALL, label: "全部" }], false);
   applyDataView();
   renderAll();
 }

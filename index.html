@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=20260825d" />
+  <link rel="stylesheet" href="/styles.css?v=20260901a" />
 </head>
 <body>
   <div class="wrap">
@@ -185,7 +185,16 @@
           <h2 class="inline-h2">广告展示成功率 · 进度条</h2>
           <div class="panel-head-right">
             <div class="mod-filters">
-              <label class="mod-filter">队列天数<select id="cohortDayAdBars"></select></label>
+              <label class="mod-filter mod-filter-multi ms-field" data-ms="cohortDayAdBars">
+                队列天数
+                <button type="button" class="ms-toggle" id="cohortDayAdBarsToggle" aria-expanded="false">全部</button>
+                <div class="ms-panel" id="cohortDayAdBarsPanel" hidden></div>
+              </label>
+              <label class="mod-filter mod-filter-multi ms-field" data-ms="adPlaceBars">
+                广告位
+                <button type="button" class="ms-toggle" id="adPlaceBarsToggle" aria-expanded="false">全部</button>
+                <div class="ms-panel" id="adPlaceBarsPanel" hidden></div>
+              </label>
               <label class="mod-filter">对比版本<select id="adBarFocus"></select></label>
             </div>
             <button type="button" class="btn-export" data-export="panelAdBars" data-export-name="广告展示成功率">导出CSV</button>
@@ -194,7 +203,7 @@
         <div id="dimContextAdBars" class="dim-context muted"></div>
         <div id="adCtrLegend" class="cmp-legend"></div>
         <div id="adBars" class="cmp-bars"></div>
-        <p class="muted tip">成功率 = 广告展示成功数 ÷ 广告应展示数。条长按 0–100% 真实比例动态展示。</p>
+        <p class="muted tip">成功率 = 广告展示成功数 ÷ 广告应展示数。条长按 0–100% 真实比例动态展示。队列天数 / 广告位支持多选；多选队列天时绝对量相加、成功率重算。</p>
       </section>
 
       <section class="panel" id="panelAdTable">
@@ -202,14 +211,23 @@
           <h2 class="inline-h2">广告明细</h2>
           <div class="panel-head-right">
             <div class="mod-filters">
-              <label class="mod-filter">队列天数<select id="cohortDayAdTable"></select></label>
+              <label class="mod-filter mod-filter-multi ms-field" data-ms="cohortDayAdTable">
+                队列天数
+                <button type="button" class="ms-toggle" id="cohortDayAdTableToggle" aria-expanded="false">全部</button>
+                <div class="ms-panel" id="cohortDayAdTablePanel" hidden></div>
+              </label>
+              <label class="mod-filter mod-filter-multi ms-field" data-ms="adPlaceTable">
+                广告位
+                <button type="button" class="ms-toggle" id="adPlaceTableToggle" aria-expanded="false">全部</button>
+                <div class="ms-panel" id="adPlaceTablePanel" hidden></div>
+              </label>
             </div>
             <button type="button" class="btn-export" data-export="panelAdTable" data-export-name="广告明细">导出CSV</button>
           </div>
         </div>
         <div id="dimContextAdTable" class="dim-context muted"></div>
         <div id="adTable" class="table-wrap"></div>
-        <p class="muted tip">对比差值单独成列。成功率由成功数 / 应展示数重算。</p>
+        <p class="muted tip">对比差值单独成列。成功率由成功数 / 应展示数重算。队列天数 / 广告位支持多选；多选队列天时按广告位合并加总。</p>
       </section>
     </div>
 
@@ -243,6 +261,6 @@
     </div>
   </div>
   <div id="toast"></div>
-  <script src="/app.js?v=20260825e"></script>
+  <script src="/app.js?v=20260901a"></script>
 </body>
 </html>
