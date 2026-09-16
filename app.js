@@ -2886,6 +2886,20 @@ async function loadSheets() {
   }
 }
 
+async function loadMailboxSnapshot() {
+  setStatus("正在读取邮箱快照…", "run");
+  $("btnLoadMailbox").disabled = true;
+  try {
+    const resp = await fetch("/api/mail-snapshot");
+    const json = await resp.json();
+    if (!resp.ok || json.ok === false) throw new Error(json.error || "邮箱快照加载失败");
+    state.data = json; syncFilters(); renderAll();
+    setStatus(`邮箱快照 · ${json.generatedAt || json.batchHour || "未知时间"}`, "ok");
+    toast("已加载最新邮箱快照");
+  } catch (err) { setStatus(String(err.message || err), "err"); toast(String(err.message || err)); }
+  finally { $("btnLoadMailbox").disabled = false; }
+}
+
 function exportStamp() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
@@ -3136,6 +3150,7 @@ function bindExportButtons() {
 
 function bind() {
   $("btnLoad").addEventListener("click", loadSheets);
+  $("btnLoadMailbox").addEventListener("click", loadMailboxSnapshot);
   bindMultiSelectUI();
   bindExportButtons();
 
